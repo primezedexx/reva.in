@@ -1762,32 +1762,8 @@ function OwnerDashboardContent() {
             </Link>
           </div>
 
-          {/* Right Action Buttons */}
-          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
-
-            <button
-              type="button"
-              onClick={() => {
-                sound.playClick();
-                setIsQrStandModalOpen(true);
-              }}
-              className="inline-flex text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-full border border-slate-200 hover:border-slate-300 shadow-2xs items-center gap-1.5 cursor-pointer transition-all active:scale-95"
-              title="Open QR Stand Studio & Settings"
-            >
-              <Printer className="w-3.5 h-3.5 text-emerald-600" />
-              <span className="hidden sm:inline">Print QR Stand</span>
-              <span className="sm:hidden">Print QR</span>
-            </button>
-
-            <Link
-              href={testPassUrl || customerQrUrl}
-              target="_blank"
-              className="hidden sm:inline-flex text-xs font-semibold text-slate-700 px-3.5 py-2 rounded-full border border-slate-200 hover:bg-slate-50 transition-all shadow-2xs items-center gap-1.5"
-            >
-              <span>Customer Pass</span>
-              <ExternalLink className="w-3 h-3 text-slate-400" />
-            </Link>
-
+          {/* Right Action Menu */}
+          <div className="flex items-center gap-2 shrink-0">
             {/* Options Menu Button (Three Dots) */}
             {authUser ? (
               <div className="relative">
