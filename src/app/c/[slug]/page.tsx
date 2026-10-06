@@ -1,0 +1,1695 @@
+'use client';
+
+// ============================================================================
+// REVA (reva.in) — Customer POV: Digital Wallet Stamp Pass (/c/[slug])
+// 1-Time Phone Registration/Login → Instant Digital Stamp Card
+// Bottom Tab Bar: [🏠 Stamp Card] [🎁 Offers] [🕒 Visits]
+// ============================================================================
+
+import React, { useState, useEffect, use } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
+import confetti from 'canvas-confetti';
+import {
+  Coffee,
+  Sparkles,
+  Gift,
+  ArrowRight,
+  ShieldCheck,
+  Smartphone,
+  CheckCircle2,
+  Share2,
+  RefreshCw,
+  PlusCircle,
+  Award,
+  Wallet,
+  Store,
+  Check,
+  Home,
+  Tag,
+  Clock,
+  LogOut,
+  Calendar,
+  Flame,
+  Star,
+  ChevronRight,
+  Compass,
+  User,
+  QrCode,
+  Camera,
+  X,
+  AlertCircle,
+  Timer,
+  Info,
+  MapPin,
+  Navigation,
+  Phone,
+  ExternalLink,
+} from 'lucide-react';
+import { Business, Customer, Membership } from '@/types/database';
+import { sound } from '@/lib/sound';
+import { resolvePassBackground, resolvePageBackground } from '@/lib/theme-presets';
+import { supabase } from '@/lib/supabase';
+import CameraQrScannerModal from '@/components/CameraQrScannerModal';
+
+export default function CustomerWalletCardPage(props: {
+  params: Promise<{ slug: string }>;
+}) {
+  const params = use(props.params);
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const slug = params.slug;
+
+  const prefillPhone = searchParams.get('phone') || '';
+  const winbackOfferCode = searchParams.get('offer') || '';
+  const autoScanParam = searchParams.get('scan') || searchParams.get('stamp') || searchParams.get('claim');
+  const isTestMode = searchParams.get('test') === '1' || searchParams.get('test') === 'true' || searchParams.get('preview') === 'true';
+
+  const [business, setBusiness] = useState<Business | null>(null);
+  const [customer, setCustomer] = useState<Customer | null>(null);
+  const [membership, setMembership] = useState<Membership | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Authentication State
+  const [phoneInput, setPhoneInput] = useState(isTestMode ? '' : prefillPhone);
+  const [nameInput, setNameInput] = useState('');
+  const [isRegistered, setIsRegistered] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Bottom Navigation State: 'card' (Stamp Card Home) | 'offers' | 'visits'
+  const [activeTab, setActiveTab] = useState<'card' | 'offers' | 'visits'>('card');
+
+  // Stamp & Cooldown Interaction State
+  const [stampAnimating, setStampAnimating] = useState(false);
+  const [isQrClaiming, setIsQrClaiming] = useState(false);
+  const [cooldownModal, setCooldownModal] = useState<{
+    isOpen: boolean;
+    hoursRemaining: number;
+    minutesRemaining: number;
+    nextAvailableAt?: string;
+    lastClaimedAt?: string;
+  } | null>(null);
+  const [qrClaimSuccessModal, setQrClaimSuccessModal] = useState<{
+    isOpen: boolean;
+    stamps: number;
+    stampsNeeded: number;
+    rewardUnlocked?: boolean;
+  } | null>(null);
+  const [rewardClaimedSuccess, setRewardClaimedSuccess] = useState(false);
+  const [showRedeemModal, setShowRedeemModal] = useState(false);
+  const [selectedRedeemOffer, setSelectedRedeemOffer] = useState<{ title: string; desc?: string; stampsNeeded?: number } | null>(null);
+  const [showWalletModal, setShowWalletModal] = useState<'apple' | 'google' | null>(null);
+  const [showScannerModal, setShowScannerModal] = useState(false);
+
+  // 1. Fetch Store & Check Local Session (Fast Cache + Background Revalidation)
+  useEffect(() => {
+    let isMounted = true;
+    async function loadData() {
+      try {
+        if (isTestMode) {
+          try {
+            localStorage.removeItem(`reva_phone_${slug}`);
+          } catch {}
+        }
+
+        const cachedBiz = localStorage.getItem(`reva_biz_cache_${slug}`);
+        if (cachedBiz) {
+          try {
+            const parsed = JSON.parse(cachedBiz);
+            if (parsed?.id) {
+              setBusiness(parsed);
+              setLoading(false);
+            }
+          } catch {}
+        }
+
+        const savedStorePhone = !isTestMode ? (prefillPhone || localStorage.getItem(`reva_phone_${slug}`)) : '';
+        const globalPhone = !isTestMode ? localStorage.getItem('reva_customer_phone') : '';
+        const globalName = !isTestMode ? localStorage.getItem('reva_customer_name') : '';
+        const globalEmail = !isTestMode ? localStorage.getItem('reva_customer_email') : '';
+        const phoneToPrefill = savedStorePhone || (globalPhone && !globalPhone.includes('@') && globalPhone.replace(/\D/g, '').length >= 10 ? globalPhone : '');
+
+        if (phoneToPrefill && !isTestMode) {
+          setPhoneInput(phoneToPrefill);
+        }
+        if (globalName && globalName !== 'Valued Guest' && globalName !== 'Aarav Sharma' && !isTestMode) {
+          setNameInput(globalName);
+        }
+
+        const bizRes = await fetch(`/api/businesses/${slug}`, {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache' },
+        });
+
+        const bizData = await bizRes.json();
+        if (!isMounted) return;
+
+        if (!bizData.success || !bizData.business) {
+          setError('Store not found. Please scan the counter QR code.');
+          setLoading(false);
+          return;
+        }
+
+        setBusiness(bizData.business);
+        try {
+          localStorage.setItem(`reva_biz_cache_${slug}`, JSON.stringify(bizData.business));
+        } catch {}
+
+        // Check if customer already has a recognized phone on this device
+        const rawEmail = globalEmail || localStorage.getItem('reva_customer_email') || null;
+        const authEmail = (rawEmail && !rawEmail.includes('primezedexx') && !rawEmail.includes('owner') && !rawEmail.endsWith('@reva.in')) ? rawEmail : null;
+        const effectivePhone = phoneToPrefill;
+
+        // Auto-restore customer pass and membership seamlessly across scans
+        if (effectivePhone && !isTestMode) {
+          try {
+            const sessionRes = await fetch('/api/customer/session', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                businessSlug: slug,
+                phone: effectivePhone || undefined,
+                email: authEmail || undefined,
+                name: globalName && globalName !== 'Valued Guest' && globalName !== 'Aarav Sharma' ? globalName : undefined,
+              }),
+            });
+            if (sessionRes.ok) {
+              const sessData = await sessionRes.json();
+              if (sessData.success && isMounted) {
+                setCustomer(sessData.customer);
+                setMembership(sessData.membership);
+                setIsRegistered(true);
+                if (sessData.customer?.phone) {
+                  try {
+                    localStorage.setItem(`reva_phone_${slug}`, sessData.customer.phone);
+                    localStorage.setItem('reva_customer_phone', sessData.customer.phone);
+                  } catch {}
+                }
+                if (sessData.customer?.name && sessData.customer.name !== 'Valued Guest' && sessData.customer.name !== 'Aarav Sharma') {
+                  try {
+                    localStorage.setItem('reva_customer_name', sessData.customer.name);
+                  } catch {}
+                }
+                if (sessData.customer?.email && !sessData.customer.email.includes('primezedexx') && !sessData.customer.email.includes('owner')) {
+                  try {
+                    localStorage.setItem('reva_customer_email', sessData.customer.email);
+                  } catch {}
+                } else {
+                  try {
+                    localStorage.removeItem('reva_customer_email');
+                  } catch {}
+                }
+              }
+            }
+          } catch {}
+        }
+      } catch (err: unknown) {
+        if (isMounted) setError('Failed to load loyalty pass. Please refresh.');
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    }
+    loadData();
+    return () => {
+      isMounted = false;
+    };
+  }, [slug, prefillPhone, isTestMode]);
+
+  // 2. Real-Time Live Sync: Polling for Cashier Stamp Punches & Store Customization
+  useEffect(() => {
+    if (!isRegistered || !customer || !business) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch('/api/customer/session', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+          },
+          body: JSON.stringify({
+            businessSlug: slug,
+            phone: customer.phone,
+          }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          // Sync any store customization updates live
+          if (data.business) {
+            setBusiness(data.business);
+          }
+          if (data.membership) {
+            // Check if stamps were incremented by cashier behind the counter
+            setMembership((prev) => {
+              if (prev && (data.membership.stamps > prev.stamps || data.membership.total_visits > prev.total_visits)) {
+                if (data.membership.stamps > prev.stamps) {
+                  sound.playStampPop();
+                  setStampAnimating(true);
+                  setTimeout(() => setStampAnimating(false), 500);
+
+                  if (data.membership.stamps >= (data.business?.reward_rule?.stamps_needed || business.reward_rule?.stamps_needed || 6)) {
+                    sound.playRewardFanfare();
+                    confetti({
+                      particleCount: 120,
+                      spread: 80,
+                      origin: { y: 0.6 },
+                    });
+                  }
+                }
+              }
+              return data.membership;
+            });
+          }
+        }
+      } catch (err) {
+        console.error('Live sync poll error', err);
+      }
+    }, 1500);
+
+    return () => clearInterval(interval);
+  }, [isRegistered, customer, business, slug]);
+
+  // Authenticate / Register Customer in 1 Tap
+  async function authenticateCustomer(phone: string, businessId?: string, name?: string) {
+    try {
+      setIsSubmitting(true);
+      const rawEmail = localStorage.getItem('reva_customer_email') || null;
+      const authEmail = (rawEmail && !rawEmail.includes('primezedexx') && !rawEmail.includes('owner') && !rawEmail.endsWith('@reva.in')) ? rawEmail : undefined;
+
+      const res = await fetch('/api/customer/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          businessSlug: slug,
+          phone,
+          name: name || undefined,
+          email: authEmail || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setCustomer(data.customer);
+        setMembership(data.membership);
+        setIsRegistered(true);
+        localStorage.setItem(`reva_phone_${slug}`, phone);
+        localStorage.setItem('reva_customer_phone', phone);
+        if (data.customer?.name && data.customer.name !== 'Valued Guest') {
+          localStorage.setItem('reva_customer_name', data.customer.name);
+        }
+        if (data.customer?.email && !data.customer.email.includes('primezedexx') && !data.customer.email.includes('owner')) {
+          localStorage.setItem('reva_customer_email', data.customer.email);
+        } else {
+          try { localStorage.removeItem('reva_customer_email'); } catch {}
+        }
+        if (data.customer?.avatar_url) {
+          localStorage.setItem('reva_customer_avatar', data.customer.avatar_url);
+        }
+        if (data.customer?.registered_at || data.customer?.created_at) {
+          localStorage.setItem('reva_customer_registered_at', data.customer.registered_at || data.customer.created_at);
+        }
+      } else {
+        setError(data.error || 'Failed to authenticate');
+      }
+    } catch {
+      setError('Connection error');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  // Handle 1-Time Customer Registration / Login Form
+  async function handleRegister(e: React.FormEvent) {
+    e.preventDefault();
+    if (!phoneInput || phoneInput.trim().length < 8) {
+      alert('Please enter a valid mobile number');
+      return;
+    }
+    sound.playClick();
+    await authenticateCustomer(phoneInput.trim(), business?.id, nameInput.trim());
+  }
+
+  // Handle Log Out / Switch Phone
+  function handleSwitchNumber() {
+    sound.playClick();
+    localStorage.removeItem(`reva_phone_${slug}`);
+    try {
+      localStorage.removeItem('reva_customer_phone');
+      localStorage.removeItem('reva_customer_name');
+      localStorage.removeItem('reva_customer_passes');
+      localStorage.removeItem('reva_global_phone');
+    } catch {}
+    setIsRegistered(false);
+    setCustomer(null);
+    setMembership(null);
+    setPhoneInput('');
+    setNameInput('');
+  }
+
+  // 24-Hour QR Cooldown status computation
+  const lastQrTimestamp = membership?.last_qr_stamp_at ? new Date(membership.last_qr_stamp_at).getTime() : 0;
+  const nowTime = Date.now();
+  const COOLDOWN_MS = 24 * 60 * 60 * 1000;
+  const timeSinceLastQr = nowTime - lastQrTimestamp;
+  const isQrCooldownActive = lastQrTimestamp > 0 && timeSinceLastQr < COOLDOWN_MS;
+  const remainingCooldownMs = isQrCooldownActive ? (COOLDOWN_MS - timeSinceLastQr) : 0;
+  const remainingHours = Math.max(0, Math.floor(remainingCooldownMs / (1000 * 60 * 60)));
+  const remainingMins = Math.max(0, Math.floor((remainingCooldownMs % (1000 * 60 * 60)) / (1000 * 60)));
+
+  // Handle Scan QR & Claim Daily Stamp (with 24-Hour Cooldown & Cashier Repeat Logic)
+  async function handleClaimQrStamp() {
+    if (!business || !membership) return;
+
+    // Check if cooldown is active locally
+    if (isQrCooldownActive) {
+      sound.playClick();
+      setCooldownModal({
+        isOpen: true,
+        hoursRemaining: remainingHours,
+        minutesRemaining: remainingMins,
+        lastClaimedAt: membership.last_qr_stamp_at || undefined,
+      });
+      return;
+    }
+
+    try {
+      setIsQrClaiming(true);
+      setStampAnimating(true);
+      sound.playStampPop();
+
+      const res = await fetch('/api/stamp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          businessId: business.id,
+          membershipId: membership.id,
+          stampAwarded: 1,
+          source: 'qr_scan',
+          staffNote: 'Customer Counter QR Scan',
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.cooldownActive || res.status === 429) {
+        setCooldownModal({
+          isOpen: true,
+          hoursRemaining: data.hoursRemaining ?? remainingHours,
+          minutesRemaining: data.minutesRemaining ?? remainingMins,
+          nextAvailableAt: data.nextAvailableAt,
+          lastClaimedAt: data.lastClaimedAt || membership.last_qr_stamp_at || undefined,
+        });
+        return;
+      }
+
+      if (data.success) {
+        setMembership(data.membership);
+        setQrClaimSuccessModal({
+          isOpen: true,
+          stamps: data.membership.stamps,
+          stampsNeeded: business.reward_rule?.stamps_needed || 6,
+          rewardUnlocked: data.rewardUnlocked,
+        });
+
+        if (data.rewardUnlocked) {
+          sound.playRewardFanfare();
+          confetti({
+            particleCount: 120,
+            spread: 80,
+            origin: { y: 0.6 },
+            colors: ['#0F172A', '#F59E0B', '#10B981', '#3B82F6'],
+          });
+        }
+      } else {
+        setError(data.error || 'Failed to claim stamp');
+      }
+    } catch (err) {
+      console.error('Error claiming QR stamp:', err);
+    } finally {
+      setIsQrClaiming(false);
+      setTimeout(() => setStampAnimating(false), 500);
+    }
+  }
+
+  const handleAddStamp = handleClaimQrStamp;
+
+  // Auto-trigger stamp claim if URL had ?scan=1 / ?stamp=1
+  useEffect(() => {
+    if (isRegistered && membership && business && autoScanParam && !loading) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('scan');
+      url.searchParams.delete('stamp');
+      url.searchParams.delete('claim');
+      window.history.replaceState({}, '', url.toString());
+
+      handleClaimQrStamp();
+    }
+  }, [isRegistered, membership, business, autoScanParam, loading]);
+
+  // Handle Redeem Reward
+  async function handleRedeemReward() {
+    if (!business || !membership) return;
+    const needed = business.reward_rule?.stamps_needed || 6;
+    if ((membership.stamps || 0) < needed) {
+      alert(`You need ${needed} stamps to redeem this reward. You currently have ${membership.stamps || 0} stamps.`);
+      return;
+    }
+
+    try {
+      sound.playClick();
+      const rewardTitle = selectedRedeemOffer?.title || business.reward_rule.reward_title;
+      const res = await fetch('/api/reward/redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          membershipId: membership.id,
+          businessId: business.id,
+          rewardDesc: rewardTitle,
+          verifiedBy: 'customer_self_verify',
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setRewardClaimedSuccess(true);
+        setShowRedeemModal(false);
+        setSelectedRedeemOffer(null);
+        sound.playRewardFanfare();
+        confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+        // Refresh membership stamps
+        const newStampsCount = Math.max(0, (membership.stamps || 0) - needed);
+        setMembership((prev) => prev ? { ...prev, stamps: newStampsCount, total_visits: prev.total_visits + 1 } : null);
+
+        // Sync with Reva Customer Hub localStorage
+        try {
+          const code = `REV-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+          const savedPasses = localStorage.getItem('reva_customer_passes');
+          if (savedPasses) {
+            const parsed = JSON.parse(savedPasses);
+            if (Array.isArray(parsed)) {
+              const updated = parsed.map((p: { slug: string; stamps?: number }) =>
+                p.slug === slug ? { ...p, stamps: newStampsCount } : p
+              );
+              localStorage.setItem('reva_customer_passes', JSON.stringify(updated));
+            }
+          }
+          const savedClaimed = localStorage.getItem('reva_claimed_rewards');
+          const claimedList = savedClaimed ? JSON.parse(savedClaimed) : [];
+          claimedList.unshift({
+            id: `claim_${Date.now()}`,
+            businessName: business.name,
+            businessSlug: slug,
+            rewardTitle,
+            claimedAt: 'Just now',
+            voucherCode: code,
+          });
+          localStorage.setItem('reva_claimed_rewards', JSON.stringify(claimedList));
+        } catch {
+          // ignore
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-white">
+        <div className="w-8 h-8 flex items-center justify-center text-[#0F172A] animate-spin mb-3">
+          <svg viewBox="0 0 24 24" className="w-8 h-8 fill-none stroke-current stroke-[2.2]">
+            <path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M4.93 19.07L19.07 4.93" />
+          </svg>
+        </div>
+        <p className="text-xs font-mono font-bold uppercase tracking-widest text-slate-400">Loading Loyalty Pass...</p>
+      </div>
+    );
+  }
+
+  if (error || !business) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-white text-center">
+        <div className="w-14 h-14 bg-red-50 text-red-500 rounded-2xl flex items-center justify-center mb-4">
+          <Store className="w-7 h-7" />
+        </div>
+        <h2 className="text-xl font-bold text-[#0F172A] mb-2 font-display">Store Not Found</h2>
+        <p className="text-xs text-slate-500 max-w-xs mb-6">{error || 'Unable to load store information.'}</p>
+        <Link
+          href="/"
+          className="px-6 py-2.5 rounded-full bg-[#0F172A] text-white text-xs font-semibold hover:bg-black transition-all shadow-xs"
+        >
+          Return to Reva Home
+        </Link>
+      </div>
+    );
+  }
+
+  const stampsNeeded = business.reward_rule?.stamps_needed || 6;
+  const grandRewardTitle = business.reward_rule?.reward_title || 'Free Specialty Beverage';
+  const minOrder = business.reward_rule?.min_order_for_stamp || business.min_order_for_stamp || 150;
+  const currentStamps = membership?.stamps ?? 0;
+  const stampsRemaining = Math.max(0, stampsNeeded - currentStamps);
+  const isRewardReady = currentStamps >= stampsNeeded;
+
+  // Active milestone offers sorted by stamps needed ("At X Stamps -> Get Y Reward")
+  const rawOffers = business.active_offers && business.active_offers.length > 0
+    ? business.active_offers
+    : [
+        {
+          id: 'def_1',
+          title: 'Free Belgian Waffle',
+          stamps_needed: Math.max(1, Math.floor(stampsNeeded / 2)),
+          badge: `${Math.max(1, Math.floor(stampsNeeded / 2))} Stamps Milestone`,
+          desc: `Earned at ${Math.max(1, Math.floor(stampsNeeded / 2))} stamps on your digital pass`,
+          type: 'milestone' as const,
+          icon: 'flame' as const,
+          min_order: minOrder,
+        },
+        {
+          id: 'def_2',
+          title: grandRewardTitle,
+          stamps_needed: stampsNeeded,
+          badge: `${stampsNeeded} Stamps Grand Reward`,
+          desc: `Unlocked at ${stampsNeeded} digital stamps`,
+          type: 'milestone' as const,
+          icon: 'star' as const,
+          min_order: minOrder,
+        },
+      ];
+
+  const activeOffers = rawOffers.map((o) => {
+    if (o.id === 'off_2' || (o.type === 'milestone' && (o.stamps_needed || 6) >= stampsNeeded)) {
+      return {
+        ...o,
+        title: grandRewardTitle,
+        stamps_needed: stampsNeeded,
+        badge: `${stampsNeeded} Stamps Grand Reward`,
+        desc: `Unlocked at ${stampsNeeded} digital stamps`,
+        min_order: minOrder,
+      };
+    }
+    return {
+      ...o,
+      min_order: o.min_order || minOrder,
+    };
+  }).slice().sort((a, b) => (a.stamps_needed || 0) - (b.stamps_needed || 0));
+
+  const nextMilestone = activeOffers.find((o) => (o.stamps_needed || 0) > currentStamps);
+  const highestUnlocked = [...activeOffers].reverse().find((o) => (o.stamps_needed || 0) <= currentStamps);
+
+  const theme = business.theme_config || business.reward_rule?.theme_config;
+  const pageBg = resolvePageBackground(theme);
+  const passCardBg = resolvePassBackground(theme, business.brand_color);
+  const cardRadiusClass = theme?.card_radius === 'rounded_squircle' ? 'rounded-[32px]' : theme?.card_radius === 'rounded_sharp' ? 'rounded-2xl' : 'rounded-3xl';
+  const accentColor = theme?.accent_color || business.brand_color || '#0F172A';
+  const stampIcon = theme?.stamp_icon || 'coffee';
+  const categoryBadge = business.reward_rule?.category || business.category || 'OFFICIAL LOYALTY PASS';
+  const customTagline = theme?.custom_tagline;
+
+  function renderStampIconSymbol(iconType: string, isStamped: boolean, isRewardSlot: boolean) {
+    if (isRewardSlot) {
+      return isStamped ? (
+        <Gift className="w-5 h-5 text-amber-400 fill-amber-400 animate-bounce" />
+      ) : (
+        <Gift className="w-5 h-5 text-amber-300" />
+      );
+    }
+    if (iconType === 'paw') {
+      return isStamped ? <span className="text-xl leading-none select-none">🐾</span> : <span className="text-sm opacity-50 font-mono">🐾</span>;
+    }
+    if (iconType === 'croissant') {
+      return isStamped ? <span className="text-xl leading-none select-none">🥐</span> : <span className="text-sm opacity-50 font-mono">🥐</span>;
+    }
+    if (iconType === 'matcha') {
+      return isStamped ? <span className="text-xl leading-none select-none">🍵</span> : <span className="text-sm opacity-50 font-mono">🍵</span>;
+    }
+    if (iconType === 'boba') {
+      return isStamped ? <span className="text-xl leading-none select-none">🧋</span> : <span className="text-sm opacity-50 font-mono">🧋</span>;
+    }
+    if (iconType === 'heart') {
+      return isStamped ? <span className="text-xl leading-none select-none">❤️</span> : <span className="text-sm opacity-50 font-mono">❤️</span>;
+    }
+    if (iconType === 'gem') {
+      return isStamped ? <span className="text-xl leading-none select-none">💎</span> : <span className="text-sm opacity-50 font-mono">💎</span>;
+    }
+    if (iconType === 'flash') {
+      return isStamped ? <span className="text-xl leading-none select-none">⚡</span> : <span className="text-sm opacity-50 font-mono">⚡</span>;
+    }
+    if (iconType === 'sparkles') {
+      return isStamped ? <span className="text-xl leading-none select-none">✨</span> : <span className="text-sm opacity-50 font-mono">✨</span>;
+    }
+    if (iconType === 'star') {
+      return isStamped ? <span className="text-xl leading-none select-none">⭐</span> : <span className="text-sm opacity-50 font-mono">⭐</span>;
+    }
+    if (iconType === 'gift') {
+      return isStamped ? <span className="text-xl leading-none select-none">🎁</span> : <span className="text-sm opacity-50 font-mono">🎁</span>;
+    }
+    if (iconType === 'flame') {
+      return isStamped ? <Flame className="w-5 h-5 text-amber-400 fill-amber-400/30" /> : <Flame className="w-5 h-5 text-white/50" />;
+    }
+    if (iconType === 'coffee') {
+      return isStamped ? <Coffee className="w-5 h-5" style={{ color: accentColor }} /> : <Coffee className="w-5 h-5 text-white/50" />;
+    }
+    return isStamped ? <Check className="w-5 h-5 stroke-[3]" style={{ color: accentColor }} /> : <Star className="w-5 h-5 text-white/40" />;
+  }
+
+  return (
+    <main
+      className="min-h-screen flex flex-col items-center justify-between font-sans antialiased pb-20 transition-colors duration-300"
+      style={{
+        backgroundColor: pageBg.bg,
+        color: pageBg.isDark ? '#F8FAFC' : '#0F172A',
+      }}
+    >
+      {/* ========================================================================= */}
+      {/* 1. TOP BRANDING BAR (reva.in) */}
+      {/* ========================================================================= */}
+      <header
+        className="w-full backdrop-blur-md border-b py-3 px-5 sm:px-6 sticky top-0 z-40 transition-all"
+        style={{
+          backgroundColor: pageBg.isDark ? 'rgba(15, 23, 42, 0.92)' : 'rgba(255, 255, 255, 0.92)',
+          borderColor: pageBg.isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)',
+        }}
+      >
+        <div className="max-w-md mx-auto flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-2 group">
+            <div
+              className="w-6 h-6 flex items-center justify-center group-hover:rotate-45 transition-transform duration-500"
+              style={{ color: pageBg.isDark ? '#F8FAFC' : '#0F172A' }}
+            >
+              <svg viewBox="0 0 24 24" className="w-5 h-5 fill-none stroke-current stroke-[2.2]">
+                <path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M4.93 19.07L19.07 4.93" />
+              </svg>
+            </div>
+            <div className="flex items-baseline gap-0.5">
+              <span className="font-display text-lg font-bold tracking-tight" style={{ color: pageBg.isDark ? '#FFFFFF' : '#0F172A' }}>
+                Reva
+              </span>
+              <span className="text-slate-400 font-display font-medium text-xs">.in</span>
+            </div>
+          </Link>
+
+          {isRegistered && customer ? (
+            <div className="flex items-center gap-2">
+              <span className={`text-[11px] font-mono font-medium px-2.5 py-1 rounded-full border ${pageBg.isDark ? 'bg-white/10 text-slate-200 border-white/10' : 'bg-slate-100 text-slate-600 border-slate-200/60'}`}>
+                {customer.phone}
+              </span>
+              <button
+                onClick={handleSwitchNumber}
+                title="Switch mobile number"
+                className="text-slate-400 hover:text-slate-200 p-1 cursor-pointer transition-colors"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : (
+            <div className="text-[10px] font-mono uppercase tracking-widest font-bold opacity-60">
+              ZERO-APP PASS
+            </div>
+          )}
+        </div>
+      </header>
+
+      {/* ========================================================================= */}
+      {/* 2. MAIN CONTAINER */}
+      {/* ========================================================================= */}
+      <div className="w-full max-w-md px-4 sm:px-6 py-5 flex-1 flex flex-col justify-start space-y-4">
+        {/* ========================================================================= */}
+        {/* SCREEN A: 1-TIME CUSTOMER LOGIN / REGISTER (IF NOT AUTHENTICATED) */}
+        {/* ========================================================================= */}
+        {!isRegistered ? (
+          <div className={`${cardRadiusClass} p-6 sm:p-8 shadow-2xl border text-center space-y-5 my-auto ${pageBg.isDark ? 'bg-slate-900/90 border-white/10 text-white' : 'bg-white border-slate-100 text-slate-900'} card-soft-shadow`}>
+            {/* Store Avatar & Details */}
+            <div
+              className="w-16 h-16 rounded-2xl mx-auto overflow-hidden shadow-md flex items-center justify-center text-white"
+              style={{ background: passCardBg }}
+            >
+              {business.logo_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={business.logo_url}
+                  alt={business.name}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <span className="text-2xl">{renderStampIconSymbol(stampIcon, true, false)}</span>
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <div className="text-[10px] font-mono uppercase tracking-[0.2em] font-bold text-amber-500">
+                {categoryBadge}
+              </div>
+              <h2 className="text-xl sm:text-2xl font-display font-bold tracking-tight">
+                {business.name}
+              </h2>
+              <p className="text-xs opacity-75 max-w-xs mx-auto">
+                {customTagline || `Collect digital stamps on every visit and earn your ${business.reward_rule.reward_title}`}
+              </p>
+              {(business.address || business.area) && (
+                <div className="flex items-center justify-center gap-1.5 text-[11px] text-slate-500 font-medium pt-1">
+                  <MapPin className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                  <span className="truncate max-w-xs">{business.address || `${business.area}, ${business.city}`}</span>
+                </div>
+              )}
+            </div>
+
+            {/* 1-Tap Phone Form */}
+            <form onSubmit={handleRegister} className="space-y-4 text-left pt-1">
+              <div>
+                <label className="block text-xs font-semibold mb-1.5 opacity-90">
+                  Enter Your Mobile Number
+                </label>
+                <div className="relative">
+                  <Smartphone className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
+                  <input
+                    type="tel"
+                    value={phoneInput}
+                    onChange={(e) => setPhoneInput(e.target.value)}
+                    placeholder="Enter 10-digit mobile number"
+                    className={`w-full pl-10 pr-4 py-3 rounded-xl border text-sm font-medium focus:outline-none transition-all font-mono ${pageBg.isDark ? 'bg-slate-800 border-slate-700 text-white focus:bg-slate-700' : 'bg-slate-50/50 border-slate-200 text-slate-900 focus:bg-white'}`}
+                    required
+                    autoFocus
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold mb-1.5 opacity-90">
+                  Your Name (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={nameInput}
+                  onChange={(e) => setNameInput(e.target.value)}
+                  placeholder="e.g. Rahul"
+                  className={`w-full px-4 py-2.5 rounded-xl border text-sm font-medium focus:outline-none transition-all ${pageBg.isDark ? 'bg-slate-800 border-slate-700 text-white focus:bg-slate-700' : 'bg-slate-50/50 border-slate-200 text-slate-900 focus:bg-white'}`}
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full py-3.5 rounded-full hover:brightness-110 active:scale-[0.99] text-white font-semibold text-xs sm:text-sm uppercase tracking-wider transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer mt-2"
+                style={{ background: passCardBg }}
+              >
+                {isSubmitting ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                    <span>Opening Pass...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>View &amp; Collect Stamps</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
+              </button>
+
+              <div className={`p-3 rounded-xl border text-[11px] flex items-center gap-2 justify-center font-mono ${pageBg.isDark ? 'bg-white/5 border-white/10 text-slate-300' : 'bg-slate-50 border-slate-100 text-slate-500'}`}>
+                <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
+                <span>No password needed • Auto-saved on your phone</span>
+              </div>
+            </form>
+          </div>
+        ) : (
+          /* ========================================================================= */
+          /* SCREEN B: AUTHENTICATED DIGITAL REWARDS PASS WITH TABS */
+          /* ========================================================================= */
+          <>
+            {/* ========================================================================= */}
+            {/* TAB 1: 🏠 STAMP CARD (HOME VIEW) */}
+            {/* ========================================================================= */}
+            {activeTab === 'card' && (
+              <div className="space-y-4 animate-stamp">
+                {/* Active Win-Back / Special Offer Banner */}
+                {winbackOfferCode && (
+                  <div
+                    className={`${cardRadiusClass} text-white p-4 shadow-lg border border-white/20 flex items-start gap-3`}
+                    style={{ background: passCardBg }}
+                  >
+                    <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0 mt-0.5">
+                      <Gift className="w-4 h-4 text-amber-300" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-mono font-bold uppercase tracking-wider bg-amber-400 text-slate-950 px-2 py-0.5 rounded-full">
+                          Special Offer Unlocked
+                        </span>
+                        <span className="text-[11px] font-mono text-slate-300">{winbackOfferCode}</span>
+                      </div>
+                      <p className="text-xs font-semibold mt-1.5 leading-snug">
+                        {business.winback_offer_text || 'Free special treat on your visit today!'}
+                      </p>
+                      <p className="text-[10px] text-slate-300 mt-0.5">Show this pass to cashier when ordering.</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Main Tactile Stamp Pass (Dynamic Store Brand & Theme Customization) */}
+                <div
+                  className={`relative ${cardRadiusClass} overflow-hidden p-6 sm:p-7 text-white shadow-2xl border border-white/15 transition-all duration-300`}
+                  style={{ background: passCardBg }}
+                >
+                  {/* Card Header */}
+                  <div className="flex items-start justify-between mb-5">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-md p-1 shadow-md overflow-hidden shrink-0 flex items-center justify-center text-white border border-white/20">
+                        {business.logo_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={business.logo_url}
+                            alt={business.name}
+                            className="w-full h-full object-cover rounded-[12px]"
+                          />
+                        ) : (
+                          <span className="text-2xl">{renderStampIconSymbol(stampIcon, true, false)}</span>
+                        )}
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-mono uppercase font-bold tracking-wider text-amber-300 mb-0.5">
+                          {categoryBadge}
+                        </div>
+                        <h2 className="text-base font-display font-bold tracking-tight leading-snug text-white">
+                          {business.name}
+                        </h2>
+                        <p className="text-xs text-white/80 font-medium">
+                          Member: <span className="font-bold text-white">{customer?.name || 'Valued Regular'}</span>
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="px-2.5 py-1 rounded-full bg-white/15 backdrop-blur-md text-[10px] font-mono font-bold tracking-wider uppercase border border-white/20 text-white">
+                      {membership?.tier || 'VIP Member'}
+                    </div>
+                  </div>
+
+                  {/* Stamp Grid with Intermediate Milestones */}
+                  <div className="bg-black/15 backdrop-blur-md rounded-2xl p-4 sm:p-5 border border-white/15 mb-5">
+                    <div className="flex items-center justify-between mb-3 text-xs font-semibold">
+                      <span className="text-white/80">Digital Stamp Card</span>
+                      <span className="bg-white/20 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold text-white">
+                        {currentStamps} of {stampsNeeded} collected
+                      </span>
+                    </div>
+
+                    <div
+                      className="grid gap-2.5 sm:gap-3"
+                      style={{
+                        gridTemplateColumns: `repeat(${stampsNeeded <= 6 ? stampsNeeded : 4}, minmax(0, 1fr))`,
+                      }}
+                    >
+                      {Array.from({ length: stampsNeeded }).map((_, index) => {
+                        const slotNum = index + 1;
+                        const isStamped = index < currentStamps;
+                        const isNext = index === currentStamps;
+                        const isRewardSlot = index === stampsNeeded - 1;
+                        const matchedOffer = activeOffers.find((o) => (o.stamps_needed || 0) === slotNum);
+
+                        return (
+                          <div
+                            key={index}
+                            className={`aspect-square rounded-2xl flex flex-col items-center justify-center relative transition-all duration-300 ${
+                              isStamped
+                                ? 'bg-white text-slate-950 shadow-lg scale-100 animate-stamp'
+                                : isNext
+                                ? 'border-2 border-dashed border-white/80 bg-white/15 scale-95 ring-2 ring-white/30'
+                                : 'border-2 border-dashed border-white/30 bg-black/10 opacity-60'
+                            }`}
+                          >
+                            {renderStampIconSymbol(stampIcon, isStamped, isRewardSlot || Boolean(matchedOffer))}
+
+                            {isStamped ? (
+                              <span className="absolute bottom-1 text-[7px] font-mono font-bold tracking-tighter uppercase text-slate-600">
+                                STAMPED
+                              </span>
+                            ) : matchedOffer ? (
+                              <span className="absolute bottom-1 text-[7px] font-mono font-bold tracking-tighter uppercase text-amber-300">
+                                GIFT
+                              </span>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Milestone Progress Helper Text */}
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-amber-300 shrink-0" />
+                      <span className="font-semibold text-[13px]">
+                        {nextMilestone ? (
+                          <span>
+                            <b>{(nextMilestone.stamps_needed || 6) - currentStamps} more {((nextMilestone.stamps_needed || 6) - currentStamps) === 1 ? 'stamp' : 'stamps'}</b> to unlock <b>{nextMilestone.title}</b>!
+                          </span>
+                        ) : highestUnlocked ? (
+                          <span className="text-amber-300 font-bold">
+                            🎉 {highestUnlocked.title} Unlocked & Ready!
+                          </span>
+                        ) : (
+                          <span>
+                            <b>{stampsRemaining} more stamps</b> to {business.reward_rule.reward_title}
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Review us on Google / Card Footer */}
+                  <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between text-xs">
+                    <a
+                      href={
+                        business.google_review_url ||
+                        `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                          business.name + ' ' + (business.address || business.area || 'Bengaluru')
+                        )}`
+                      }
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white/15 hover:bg-white/25 active:scale-95 text-white text-[11px] font-medium backdrop-blur-md transition-all border border-white/20 shadow-2xs group cursor-pointer"
+                      title={`Review ${business.name} on Google`}
+                    >
+                      <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24">
+                        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                      </svg>
+                      <span className="font-semibold text-white">Review us on Google</span>
+                      <ExternalLink className="w-3 h-3 text-white/70 group-hover:text-white group-hover:translate-x-0.5 transition-transform" />
+                    </a>
+
+                    <span className="text-[10px] text-white/70 font-mono">
+                      Total Visits: {membership?.total_visits ?? 1}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Scan Counter QR Stand Action (Requires Scanning Physical QR Stand) */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    sound.playClick();
+                    setShowScannerModal(true);
+                  }}
+                  className="w-full py-3.5 px-4 rounded-2xl bg-[#0F172A] hover:bg-black text-white font-display font-bold text-sm shadow-lg shadow-slate-900/10 flex items-center justify-between gap-3 cursor-pointer transition-all active:scale-98 border border-slate-700/40 group"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center shrink-0 group-hover:scale-105 group-hover:rotate-6 transition-transform">
+                      <QrCode className="w-5 h-5 text-emerald-400" />
+                    </div>
+                    <div className="text-left leading-tight min-w-0">
+                      <div className="text-[13px] font-bold truncate">Scan Counter QR Stand</div>
+                      <div className="text-[10px] text-slate-300 font-normal font-sans truncate">
+                        Scan the stand at checkout with camera to collect stamp
+                      </div>
+                    </div>
+                  </div>
+                  <div className="px-3 py-1.5 rounded-full bg-white/15 text-white text-[11px] font-mono font-bold shrink-0 flex items-center gap-1.5 group-hover:bg-white/25 transition-colors">
+                    <Camera className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Open Scanner</span>
+                  </div>
+                </button>
+
+                {/* Cooldown Info Badge (Shown only when 24h QR scan cooldown is active) */}
+                {isQrCooldownActive && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      sound.playClick();
+                      setCooldownModal({
+                        isOpen: true,
+                        hoursRemaining: remainingHours,
+                        minutesRemaining: remainingMins,
+                        lastClaimedAt: membership?.last_qr_stamp_at || undefined,
+                      });
+                    }}
+                    className="w-full p-3 rounded-2xl bg-amber-500/10 border border-amber-500/25 text-amber-900 flex items-center justify-between gap-2.5 text-left cursor-pointer hover:bg-amber-500/15 transition-all shadow-2xs group"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-7 h-7 rounded-lg bg-amber-500/20 text-amber-700 flex items-center justify-center shrink-0">
+                        <Clock className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-amber-950 font-display truncate">
+                          Daily QR Scan Claimed • 24h Cooldown
+                        </div>
+                        <p className="text-[10px] text-amber-800 font-sans truncate">
+                          Revisiting today? Tap to show pass to cashier
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-[11px] font-mono font-bold text-amber-800 bg-white px-2 py-0.5 rounded-lg border border-amber-200 shrink-0">
+                      {remainingHours}h {remainingMins}m
+                    </span>
+                  </button>
+                )}
+
+                {/* Minimum Bill Rule Badge */}
+                <div className="bg-slate-100/80 border border-slate-200/80 rounded-2xl py-2 px-3.5 flex items-center justify-between text-xs text-slate-700">
+                  <div className="flex items-center gap-2 font-medium">
+                    <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>
+                      Earn <b>1 Stamp</b> on every order of <b>₹{business.reward_rule.min_order_for_stamp || business.min_order_for_stamp || 150}+</b>
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-mono text-slate-400 uppercase font-bold">Counter Rule</span>
+                </div>
+
+                {/* Primary Action Button: Redeem Grand Reward (When full card stamps completed) */}
+                {isRewardReady && (
+                  <button
+                    onClick={() => {
+                      setSelectedRedeemOffer({
+                        title: grandRewardTitle,
+                        desc: business.reward_rule.reward_desc || 'Free Grand Loyalty Reward',
+                        stampsNeeded: stampsNeeded,
+                      });
+                      setShowRedeemModal(true);
+                      sound.playClick();
+                    }}
+                    className="w-full py-4 rounded-full text-white font-display font-bold text-sm shadow-xl flex items-center justify-center gap-2 cursor-pointer hover:brightness-110 transition-transform active:scale-98 uppercase tracking-wider animate-pulse"
+                    style={{ backgroundColor: business.brand_color || '#0F172A' }}
+                  >
+                    <Gift className="w-5 h-5 animate-bounce text-amber-400" />
+                    <span>Redeem {grandRewardTitle} ({stampsNeeded}/{stampsNeeded} Stamps Completed!)</span>
+                  </button>
+                )}
+
+                {/* Add to Apple / Google Wallet Buttons */}
+                <div className="grid grid-cols-2 gap-2 pt-0.5">
+                  <button
+                    onClick={() => setShowWalletModal('apple')}
+                    className="py-2.5 px-3 rounded-xl bg-black text-white text-xs font-semibold flex items-center justify-center gap-1.5 hover:bg-neutral-800 transition-colors shadow-2xs cursor-pointer"
+                  >
+                    <Wallet className="w-3.5 h-3.5 text-white" />
+                    <span>Add to Apple Wallet</span>
+                  </button>
+
+                  <button
+                    onClick={() => setShowWalletModal('google')}
+                    className="py-2.5 px-3 rounded-xl bg-white border border-slate-200 text-[#0F172A] text-xs font-semibold flex items-center justify-center gap-1.5 hover:bg-slate-50 transition-colors shadow-2xs cursor-pointer"
+                  >
+                    <Award className="w-3.5 h-3.5 text-slate-700" />
+                    <span>Google Wallet</span>
+                  </button>
+                </div>
+
+                {/* Helper Card */}
+                <div className="bg-white rounded-2xl p-4 border border-slate-100 card-soft-shadow text-xs text-slate-600 space-y-2 text-left">
+                  <div className="flex items-center gap-2 font-display font-bold text-[#0F172A]">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                    <span>How Your Pass Works</span>
+                  </div>
+                  <p>• <b>Scan to Stamp:</b> Scan the QR code at the counter to claim 1 daily stamp instantly.</p>
+                  <p>• <b>24-Hour Cooldown:</b> QR scanning allows 1 claim per 24 hours.</p>
+                  <p>• <b>Revisiting Within 24h?</b> If you visit again on the same day (e.g. 2–3 hours later), ask the cashier at checkout to punch your repeat stamp directly at the counter.</p>
+                  <p>• <b>Milestone Rewards:</b> Collect stamps to unlock free treats and specialty rewards automatically.</p>
+                </div>
+
+                {/* Store Location & Directions Card */}
+                {(business.address || business.area) && (
+                  <div className="bg-white rounded-2xl p-4 border border-slate-100 card-soft-shadow text-left space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 font-display font-bold text-xs text-[#0F172A]">
+                        <MapPin className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <span>Store Location &amp; Directions</span>
+                      </div>
+                      <span className="text-[10px] font-mono font-bold uppercase text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
+                        Open Today
+                      </span>
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="text-xs font-semibold text-slate-800">
+                        {business.name} • {business.area || 'Indiranagar'}
+                      </div>
+                      <p className="text-[11px] text-slate-500 leading-relaxed font-sans">
+                        {business.address || `${business.area}, ${business.city} - ${business.pincode}`}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-1">
+                      <a
+                        href={business.maps_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(business.name + ' ' + (business.address || business.area || 'Bengaluru'))}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-1 py-2 px-3 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                      >
+                        <Navigation className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Get Directions</span>
+                        <ExternalLink className="w-3 h-3 text-slate-400" />
+                      </a>
+
+                      {business.phone && (
+                        <a
+                          href={`tel:${business.phone}`}
+                          className="py-2 px-3 rounded-xl bg-slate-50 border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer"
+                        >
+                          <Phone className="w-3.5 h-3.5 text-slate-500" />
+                          <span>Call Store</span>
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ========================================================================= */}
+            {/* TAB 2: 🎁 OFFERS & SPECIAL TREATS (Milestone-based Rewards) */}
+            {/* ========================================================================= */}
+            {activeTab === 'offers' && (
+              <div className="space-y-4 animate-stamp text-left">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-display font-bold text-base text-[#0F172A]">Milestone Rewards</h3>
+                    <p className="text-xs text-slate-400">Collect stamps to unlock each tier at {business.name}</p>
+                  </div>
+                  <span
+                    className="text-[11px] font-mono font-bold text-white px-2.5 py-1 rounded-full shadow-2xs"
+                    style={{ backgroundColor: business.brand_color || '#0F172A' }}
+                  >
+                    {currentStamps} Stamps Collected
+                  </span>
+                </div>
+
+                {/* Milestone Offer Cards List */}
+                <div className="space-y-3">
+                  {activeOffers.map((offer) => {
+                    const reqStamps = offer.stamps_needed || stampsNeeded;
+                    const isUnlocked = currentStamps >= reqStamps;
+                    const progressPercent = Math.min(100, Math.round((currentStamps / reqStamps) * 100));
+                    const remaining = Math.max(0, reqStamps - currentStamps);
+
+                    return (
+                      <div
+                        key={offer.id}
+                        className={`rounded-2xl p-4.5 border transition-all card-soft-shadow ${
+                          isUnlocked
+                            ? 'bg-gradient-to-br from-emerald-50/80 via-white to-emerald-50/30 border-emerald-300 ring-1 ring-emerald-400/20'
+                            : 'bg-white border-slate-200/80 hover:border-slate-300'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-3 mb-2.5">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="text-[11px] font-mono font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full text-white shadow-2xs"
+                              style={{ backgroundColor: isUnlocked ? '#059669' : business.brand_color || '#0F172A' }}
+                            >
+                              🎯 At {reqStamps} Stamps
+                            </span>
+                            {offer.min_order && (
+                              <span className="text-[10px] font-mono text-slate-400">
+                                Min. ₹{offer.min_order}
+                              </span>
+                            )}
+                          </div>
+
+                          {isUnlocked ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-mono font-bold text-emerald-700 bg-emerald-100/90 px-2.5 py-0.5 rounded-full">
+                              <Check className="w-3.5 h-3.5 stroke-[3]" />
+                              <span>UNLOCKED</span>
+                            </span>
+                          ) : (
+                            <span className="text-[11px] font-mono font-semibold text-slate-500">
+                              {remaining} more {remaining === 1 ? 'stamp' : 'stamps'} needed
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 border ${
+                              isUnlocked
+                                ? 'bg-white border-emerald-200 text-emerald-600 shadow-2xs'
+                                : 'bg-slate-50 border-slate-200 text-slate-700'
+                            }`}>
+                              {offer.icon === 'flame' ? (
+                                <Flame className="w-5 h-5 text-amber-500 fill-amber-400/20" />
+                              ) : offer.icon === 'star' ? (
+                                <Star className="w-5 h-5 text-emerald-600 fill-emerald-500/20" />
+                              ) : offer.icon === 'coffee' ? (
+                                <Coffee className="w-5 h-5 text-slate-700" />
+                              ) : (
+                                <Gift className="w-5 h-5 text-purple-600" />
+                              )}
+                            </div>
+
+                            <div className="min-w-0">
+                              <h4 className="font-display font-bold text-sm text-[#0F172A] truncate">
+                                {offer.title}
+                              </h4>
+                              <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                                {offer.desc || `Unlocked when customer reaches ${reqStamps} stamps on pass`}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="shrink-0">
+                            {isUnlocked ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedRedeemOffer({
+                                    title: offer.title,
+                                    desc: offer.desc,
+                                    stampsNeeded: reqStamps,
+                                  });
+                                  setShowRedeemModal(true);
+                                  sound.playClick();
+                                }}
+                                className="px-4 py-2 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-display font-bold text-xs shadow-md flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all"
+                              >
+                                <Gift className="w-3.5 h-3.5" />
+                                <span>Claim</span>
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveTab('card');
+                                  sound.playClick();
+                                }}
+                                className="px-3.5 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-mono font-bold text-xs transition-colors cursor-pointer"
+                              >
+                                {currentStamps}/{reqStamps}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Progress Bar */}
+                        {!isUnlocked && (
+                          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center gap-2.5">
+                            <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-amber-500 rounded-full transition-all duration-500"
+                                style={{ width: `${progressPercent}%` }}
+                              />
+                            </div>
+                            <span className="text-[10px] font-mono font-bold text-slate-400 shrink-0">
+                              {progressPercent}%
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* ========================================================================= */}
+            {/* TAB 3: 🕒 MY VISITS & HISTORY */}
+            {/* ========================================================================= */}
+            {activeTab === 'visits' && (
+              <div className="space-y-4 animate-stamp text-left">
+                <div className="space-y-1">
+                  <h3 className="font-display font-bold text-lg text-[#0F172A]">Your Visit History</h3>
+                  <p className="text-xs text-slate-500">Timeline of visits and rewards earned at {business.name}</p>
+                </div>
+
+                {/* Summary Stat Grid */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-white rounded-2xl p-4 border border-slate-100 card-soft-shadow text-center">
+                    <div className="text-[10px] font-mono font-bold uppercase text-slate-400">Total Visits</div>
+                    <div className="font-display font-black text-2xl text-[#0F172A] mt-1">
+                      {membership?.total_visits ?? 1}
+                    </div>
+                  </div>
+                  <div className="bg-white rounded-2xl p-4 border border-slate-100 card-soft-shadow text-center">
+                    <div className="text-[10px] font-mono font-bold uppercase text-slate-400">Current Stamps</div>
+                    <div className="font-display font-black text-2xl text-emerald-600 mt-1">
+                      {currentStamps} / {stampsNeeded}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Activity List */}
+                <div className="bg-white rounded-2xl border border-slate-100 card-soft-shadow divide-y divide-slate-100 overflow-hidden">
+                  <div className="p-3.5 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold text-xs">
+                        +1
+                      </div>
+                      <div>
+                        <div className="font-display font-bold text-xs text-[#0F172A]">Counter Visit & Stamp</div>
+                        <div className="text-[10px] text-slate-400 font-mono">Today • Verified Stamp</div>
+                      </div>
+                    </div>
+                    <span className="text-[11px] font-mono font-bold text-emerald-600">+1 Stamp</span>
+                  </div>
+
+                  <div className="p-3.5 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-700 flex items-center justify-center font-bold text-xs">
+                        📱
+                      </div>
+                      <div>
+                        <div className="font-display font-bold text-xs text-[#0F172A]">Pass Connected</div>
+                        <div className="text-[10px] text-slate-400 font-mono">Mobile Pass Activated</div>
+                      </div>
+                    </div>
+                    <span className="text-[11px] font-mono text-slate-400">Active</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* ========================================================================= */}
+      {/* 3. BOTTOM MOBILE NAVIGATION BAR: [HOME] [CAMERA SCANNER] [PROFILE & SETTINGS] */}
+      {/* ========================================================================= */}
+      {isRegistered && (
+        <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-t border-slate-200/80 h-16 px-6 shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
+          <div className="max-w-md mx-auto h-full flex items-center justify-between relative">
+            {/* 1. Stamp Pass (Home) */}
+            <button
+              onClick={() => {
+                sound.playClick();
+                setActiveTab('card');
+              }}
+              className="flex-1 flex flex-col items-center justify-center gap-1 cursor-pointer transition-colors"
+              style={{ color: activeTab === 'card' ? (business.brand_color || '#0F172A') : '#94A3B8' }}
+            >
+              <Home className={`w-5 h-5 ${activeTab === 'card' ? 'stroke-[2.5]' : ''}`} />
+              <span className={`text-[10px] font-display ${activeTab === 'card' ? 'font-bold' : 'font-medium'}`}>Home</span>
+            </button>
+
+            {/* 2. Center Floating Scan QR / Camera Button */}
+            <div className="flex-1 flex justify-center -mt-6">
+              <button
+                onClick={() => {
+                  sound.playClick();
+                  setShowScannerModal(true);
+                }}
+                className="w-13 h-13 rounded-full text-white flex items-center justify-center shadow-[0_8px_25px_rgba(15,23,42,0.4)] border-4 border-white hover:scale-105 active:scale-95 transition-all cursor-pointer group"
+                style={{ backgroundColor: business.brand_color || '#0F172A' }}
+                title="Scan QR Code / Camera"
+              >
+                <QrCode className="w-6 h-6 group-hover:rotate-12 transition-transform" />
+              </button>
+            </div>
+
+            {/* 3. Customer Profile & Settings */}
+            <Link
+              href="/c?tab=profile"
+              className="flex-1 flex flex-col items-center justify-center gap-1 cursor-pointer transition-colors text-slate-400 hover:text-slate-700"
+            >
+              <User className="w-5 h-5" />
+              <span className="text-[10px] font-display font-medium">Profile &amp; Settings</span>
+            </Link>
+          </div>
+        </nav>
+      )}
+
+      {/* ========================================================================= */}
+      {/* LIVE CAMERA QR SCANNER & AUTO-STORE RECOGNITION MODAL */}
+      {/* ========================================================================= */}
+      <CameraQrScannerModal
+        isOpen={showScannerModal}
+        onClose={() => setShowScannerModal(false)}
+        currentSlug={slug}
+        customerPhone={customer?.phone || phoneInput}
+        customerName={customer?.name || nameInput}
+        onStampClaimed={(res) => {
+          if (res.cooldownActive) {
+            setCooldownModal({
+              isOpen: true,
+              hoursRemaining: res.hoursRemaining ?? remainingHours,
+              minutesRemaining: res.minutesRemaining ?? remainingMins,
+              lastClaimedAt: membership?.last_qr_stamp_at || undefined,
+            });
+          } else if (res.success && res.membership) {
+            sound.playStampPop();
+            setStampAnimating(true);
+            setTimeout(() => setStampAnimating(false), 500);
+            setMembership(res.membership);
+            setIsRegistered(true);
+
+            const needed = business?.reward_rule?.stamps_needed || 6;
+            const isRewardNow = (res.membership.stamps || 0) >= needed;
+
+            setQrClaimSuccessModal({
+              isOpen: true,
+              stamps: res.membership.stamps,
+              stampsNeeded: needed,
+              rewardUnlocked: isRewardNow,
+            });
+
+            if (isRewardNow) {
+              sound.playRewardFanfare();
+              confetti({
+                particleCount: 120,
+                spread: 80,
+                origin: { y: 0.6 },
+                colors: ['#0F172A', '#F59E0B', '#10B981', '#3B82F6'],
+              });
+            }
+          } else if (res.success && customer?.phone) {
+            // Soft background sync without full page reload
+            fetch('/api/customer/session', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ businessSlug: slug, phone: customer.phone }),
+            })
+              .then((r) => r.json())
+              .then((data) => {
+                if (data.success && data.membership) {
+                  setMembership(data.membership);
+                }
+              })
+              .catch(() => {});
+          }
+        }}
+      />
+
+      {/* ========================================================================= */}
+      {/* 24-HOUR COOLDOWN POPUP MODAL (CUSTOMER QR CLAIM LIMIT & CASHIER REVISIT) */}
+      {/* ========================================================================= */}
+      {cooldownModal?.isOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-white text-slate-900 rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl relative border border-slate-100 text-center animate-stamp">
+            <button
+              onClick={() => setCooldownModal(null)}
+              className="absolute right-4 top-4 w-8 h-8 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center hover:bg-slate-200 transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="w-16 h-16 rounded-2xl bg-amber-50 border-2 border-amber-200 flex items-center justify-center mx-auto text-amber-600 shadow-inner">
+              <Clock className="w-8 h-8" />
+            </div>
+
+            <div className="space-y-1">
+              <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-700 bg-amber-100 px-2.5 py-0.5 rounded-full">
+                24-Hour Cooldown Active
+              </span>
+              <h3 className="text-lg font-display font-bold text-[#0F172A] mt-1">
+                Daily QR Stamp Limit
+              </h3>
+            </div>
+
+            {/* Exact notice message specified by user */}
+            <div className="bg-amber-50/90 border border-amber-200 rounded-2xl p-4 text-left space-y-2">
+              <div className="flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div className="space-y-1 text-xs">
+                  <p className="font-bold text-amber-950 leading-snug">
+                    You can claim a stamp from this method after 24 hours.
+                  </p>
+                  <p className="text-amber-900 leading-snug font-medium">
+                    If you are revisiting within 24 hours, then ask cashier for the stamp card.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Countdown timer badge */}
+            <div className="bg-slate-50 rounded-2xl p-3 border border-slate-200/80 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-1.5 text-slate-500">
+                <Timer className="w-3.5 h-3.5 text-amber-500" />
+                <span>Next QR stamp ready in:</span>
+              </div>
+              <span className="font-mono font-bold text-sm text-[#0F172A] bg-white px-2.5 py-0.5 rounded-lg border border-slate-200 shadow-2xs">
+                {cooldownModal.hoursRemaining}h {cooldownModal.minutesRemaining}m
+              </span>
+            </div>
+
+            {/* Cashier Pass Details (to easily show cashier when revisiting) */}
+            <div className="bg-slate-900 text-white rounded-2xl p-3.5 text-left space-y-1.5 shadow-sm">
+              <div className="flex items-center justify-between text-[10px] font-mono uppercase text-amber-400 font-bold">
+                <span>Show to Cashier at Counter</span>
+                <span>{business.name}</span>
+              </div>
+              <div className="flex items-center justify-between pt-1 border-t border-white/10 text-xs">
+                <div>
+                  <div className="text-[10px] text-slate-400">Guest Name</div>
+                  <div className="font-bold text-white truncate max-w-[120px]">{customer?.name || 'Valued Guest'}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-[10px] text-slate-400">Registered Phone / ID</div>
+                  <div className="font-mono font-bold text-amber-300">
+                    {customer?.phone || (membership?.id ? membership.id.slice(0, 10).toUpperCase() : 'PASS-REVA')}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-1">
+              <button
+                onClick={() => setCooldownModal(null)}
+                className="w-full py-3 rounded-full text-white text-xs font-bold hover:brightness-110 shadow-md cursor-pointer uppercase tracking-wider transition-all"
+                style={{ backgroundColor: business.brand_color || '#0F172A' }}
+              >
+                Understood / Show Cashier
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* QR STAMP CLAIM SUCCESS POPUP */}
+      {/* ========================================================================= */}
+      {qrClaimSuccessModal?.isOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-white text-slate-900 rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl relative border border-slate-100 text-center animate-stamp">
+            <button
+              onClick={() => setQrClaimSuccessModal(null)}
+              className="absolute right-4 top-4 w-8 h-8 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center hover:bg-slate-200 transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="w-16 h-16 rounded-2xl bg-emerald-50 border-2 border-emerald-200 flex items-center justify-center mx-auto text-emerald-600 shadow-inner">
+              <CheckCircle2 className="w-8 h-8" />
+            </div>
+
+            <div className="space-y-1">
+              <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full">
+                Stamp Collected! 🎉
+              </span>
+              <h3 className="text-lg font-display font-bold text-[#0F172A] mt-1">
+                +1 Stamp Added to Pass
+              </h3>
+              <p className="text-xs text-slate-500">
+                You now have <b className="text-emerald-700">{qrClaimSuccessModal.stamps} of {qrClaimSuccessModal.stampsNeeded}</b> stamps collected at {business.name}.
+              </p>
+            </div>
+
+            <div className="bg-slate-50 rounded-2xl p-3.5 border border-slate-200 text-left text-xs text-slate-600 space-y-1">
+              <div className="flex items-center gap-1.5 font-semibold text-slate-800">
+                <Clock className="w-3.5 h-3.5 text-slate-500" />
+                <span>Next QR stamp claim available in 24 hours.</span>
+              </div>
+              <p className="text-[11px] text-slate-500">
+                Revisiting again later today? Show your pass at the counter and the cashier will punch your repeat stamp directly.
+              </p>
+            </div>
+
+            <button
+              onClick={() => setQrClaimSuccessModal(null)}
+              className="w-full py-3 rounded-full text-white text-xs font-bold hover:brightness-110 shadow-md cursor-pointer uppercase tracking-wider transition-all"
+              style={{ backgroundColor: business.brand_color || '#0F172A' }}
+            >
+              Awesome!
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 4. REDEEM REWARD MODAL */}
+      {/* ========================================================================= */}
+      {showRedeemModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl text-center space-y-4 animate-stamp">
+            <div
+              className="w-16 h-16 rounded-2xl text-amber-400 flex items-center justify-center mx-auto shadow-md"
+              style={{ backgroundColor: business.brand_color || '#0F172A' }}
+            >
+              <Gift className="w-8 h-8" />
+            </div>
+
+            <h3 className="text-lg font-display font-bold text-[#0F172A]">Redeem Your Free Reward</h3>
+            <p className="text-xs text-slate-500">
+              Please show this screen to the counter staff before confirming.
+            </p>
+
+            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 text-left">
+              <div className="text-[10px] font-bold text-slate-400 uppercase font-mono">Unlocked Treat:</div>
+              <div className="text-sm font-bold text-[#0F172A] mt-0.5">
+                {selectedRedeemOffer?.title || business.reward_rule.reward_title}
+              </div>
+              <div className="text-xs text-slate-500 mt-1">
+                {selectedRedeemOffer?.desc || business.reward_rule.reward_desc}
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={() => {
+                  setShowRedeemModal(false);
+                  setSelectedRedeemOffer(null);
+                }}
+                className="flex-1 py-3 rounded-full border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRedeemReward}
+                className="flex-1 py-3 rounded-full text-white text-xs font-bold hover:brightness-110 shadow-md cursor-pointer uppercase tracking-wider"
+                style={{ backgroundColor: business.brand_color || '#0F172A' }}
+              >
+                Staff Confirmed
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 5. WALLET PASS PREVIEW MODAL */}
+      {/* ========================================================================= */}
+      {showWalletModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl text-center space-y-4">
+            <div
+              className="w-12 h-12 rounded-2xl text-white flex items-center justify-center mx-auto shadow-sm"
+              style={{ backgroundColor: business.brand_color || '#0F172A' }}
+            >
+              <Wallet className="w-6 h-6" />
+            </div>
+
+            <h3 className="text-base font-display font-bold text-[#0F172A]">
+              {showWalletModal === 'apple' ? 'Apple Wallet (.pkpass)' : 'Google Wallet API'} Pass Ready
+            </h3>
+            <p className="text-xs text-slate-500">
+              Your digital card is pinned to this phone. You can also save it into your native wallet app.
+            </p>
+
+            <div className="p-3 bg-slate-50 rounded-xl text-left font-mono text-[11px] text-slate-600 space-y-1">
+              <div>• Store: {business.name}</div>
+              <div>• Stamps: {currentStamps}/{stampsNeeded}</div>
+              <div>• Status: Active VIP Member</div>
+            </div>
+
+            <button
+              onClick={() => {
+                setShowWalletModal(null);
+                alert(`Pass payload generated successfully for ${showWalletModal === 'apple' ? 'Apple Wallet' : 'Google Wallet'}!`);
+              }}
+              className="w-full py-3 rounded-full bg-[#0F172A] text-white text-xs font-semibold hover:bg-black cursor-pointer uppercase tracking-wider"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
+    </main>
+  );
+}

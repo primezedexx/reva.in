@@ -1,0 +1,374 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    --font-display: var(--font-outfit), system-ui, -apple-system, sans-serif;
+    --font-body: var(--font-sans), system-ui, -apple-system, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+
+    --bg-main: #FFFFFF;
+    --text-primary: #0F172A;
+    --text-muted: #64748B;
+    --text-subtle: #94A3B8;
+    --border-card: #F1F5F9;
+    --border-hover: #E2E8F0;
+  }
+
+  body {
+    background-color: #FFFFFF;
+    color: #0F172A;
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+  }
+
+  h1, h2, h3, h4, .font-display {
+    font-family: var(--font-display);
+    letter-spacing: -0.03em;
+  }
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+.font-body {
+  font-family: var(--font-body);
+}
+
+.font-mono {
+  font-family: var(--font-mono);
+  font-feature-settings: "tnum" 1;
+}
+
+/* 3D Isometric / Perspective Container */
+.perspective-1500 {
+  perspective: 1500px;
+  transform-style: preserve-3d;
+}
+
+.preserve-3d {
+  transform-style: preserve-3d;
+}
+
+/* Staggered Organic Floating for Member Badges */
+@keyframes float-pill-1 {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-6px) rotate(0.5deg);
+  }
+}
+
+@keyframes float-pill-2 {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-8px) rotate(-0.5deg);
+  }
+}
+
+@keyframes float-pill-3 {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-5px) rotate(0.4deg);
+  }
+}
+
+.animate-float-pill-1 {
+  animation: float-pill-1 4.2s ease-in-out infinite;
+}
+
+.animate-float-pill-2 {
+  animation: float-pill-2 4.8s ease-in-out infinite 0.5s;
+}
+
+.animate-float-pill-3 {
+  animation: float-pill-3 5.4s ease-in-out infinite 1s;
+}
+
+/* Idle Hover Card Bobbing */
+@keyframes card-idle-bob {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+.animate-card-idle {
+  animation: card-idle-bob 5s ease-in-out infinite;
+}
+
+/* High-End Roco.Bank Tactile Card Shadows with 3D Depth */
+.card-roco-shadow {
+  box-shadow: 
+    0 20px 45px -10px rgba(15, 23, 42, 0.28),
+    0 8px 16px -4px rgba(15, 23, 42, 0.12),
+    0 0 0 1px rgba(255, 255, 255, 0.22) inset,
+    0 1px 2px 0 rgba(255, 255, 255, 0.4) inset;
+}
+
+.card-roco-shadow-top {
+  box-shadow: 
+    0 32px 64px -14px rgba(15, 23, 42, 0.35),
+    0 12px 24px -6px rgba(15, 23, 42, 0.15),
+    0 0 0 1px rgba(255, 255, 255, 0.35) inset,
+    0 2px 4px 0 rgba(255, 255, 255, 0.5) inset;
+}
+
+.card-soft-shadow {
+  box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.04), 0 0 0 1px rgba(15, 23, 42, 0.06);
+}
+
+.card-soft-shadow:hover {
+  box-shadow: 0 14px 34px -4px rgba(15, 23, 42, 0.08), 0 0 0 1px rgba(15, 23, 42, 0.1);
+}
+
+/* Custom Clean Sliders */
+input[type='range'] {
+  accent-color: #0F172A;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #E2E8F0;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #CBD5E1;
+}
+
+/* ========================================================================= */
+/* REVA HERO ENTRANCE SEQUENCE SYSTEM */
+/* Global Easing: cubic-bezier(0.16, 1, 0.3, 1) [ease-out-expo] */
+/* Back-Out Easing for Pills: cubic-bezier(0.34, 1.56, 0.64, 1) */
+/* ========================================================================= */
+
+:root {
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-back-out: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes hero-fade-up-10 {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes hero-fade-up-15 {
+  from {
+    opacity: 0;
+    transform: translateY(15px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes hero-fade-up-20 {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes hero-fade-simple {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* 1. EYEBROW TEXT ("FOR INDEPENDENT CAFÉS & RESTAURANTS") - Delay 0.1s, Duration 0.5s */
+.hero-anim-eyebrow {
+  opacity: 0;
+  animation: hero-fade-up-10 0.5s var(--ease-out-expo) 0.1s forwards;
+}
+
+/* 2. HEADLINE LINE 1 - Delay 0.25s, Duration 0.6s */
+.hero-anim-headline-1 {
+  opacity: 0;
+  animation: hero-fade-up-20 0.6s var(--ease-out-expo) 0.25s forwards;
+}
+
+/* 2. HEADLINE LINE 2 - Delay 0.35s (staggered by 0.1s), Duration 0.6s */
+.hero-anim-headline-2 {
+  opacity: 0;
+  animation: hero-fade-up-20 0.6s var(--ease-out-expo) 0.35s forwards;
+}
+
+/* 3. SUBHEAD PARAGRAPH - Delay 0.45s, Duration 0.5s */
+.hero-anim-subhead {
+  opacity: 0;
+  animation: hero-fade-up-15 0.5s var(--ease-out-expo) 0.45s forwards;
+}
+
+/* 4. CTA BUTTONS - Delay 0.6s, Duration 0.4s */
+.hero-anim-cta {
+  opacity: 0;
+  animation: hero-fade-up-15 0.4s var(--ease-out-expo) 0.6s forwards;
+}
+
+/* 5. TRUST LINE - Delay 0.75s, Duration 0.4s */
+.hero-anim-trust {
+  opacity: 0;
+  animation: hero-fade-up-15 0.4s var(--ease-out-expo) 0.75s forwards;
+}
+
+/* 6. IPHONE V-SHAPE HERO ENTRANCE ANIMATIONS (Preserves crispness without 3D blur) */
+@keyframes hero-iphone-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.hero-anim-iphone-left {
+  opacity: 0;
+  animation: hero-iphone-fade-in 0.7s var(--ease-out-expo) 0.3s forwards;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+.hero-anim-iphone-center {
+  opacity: 0;
+  animation: hero-iphone-fade-in 0.7s var(--ease-out-expo) 0.15s forwards;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+.hero-anim-iphone-right {
+  opacity: 0;
+  animation: hero-iphone-fade-in 0.7s var(--ease-out-expo) 0.4s forwards;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Subtle Idle Floating for the 3 iPhones (only translateY to preserve rotations and offsets) */
+@keyframes iphone-float-left {
+  0%, 100% {
+    transform: translateY(0px) translateZ(0);
+  }
+  50% {
+    transform: translateY(-6px) translateZ(0);
+  }
+}
+
+@keyframes iphone-float-center {
+  0%, 100% {
+    transform: translateY(0px) translateZ(0);
+  }
+  50% {
+    transform: translateY(-8px) translateZ(0);
+  }
+}
+
+@keyframes iphone-float-right {
+  0%, 100% {
+    transform: translateY(0px) translateZ(0);
+  }
+  50% {
+    transform: translateY(-6px) translateZ(0);
+  }
+}
+
+.animate-iphone-left {
+  animation: iphone-float-left 6s ease-in-out infinite 0.5s;
+  backface-visibility: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+.animate-iphone-center {
+  animation: iphone-float-center 5.5s ease-in-out infinite;
+  backface-visibility: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+.animate-iphone-right {
+  animation: iphone-float-right 6.2s ease-in-out infinite 1s;
+  backface-visibility: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Slim Premium iPhone Bezel & Realistic Soft Drop Shadows */
+.iphone-frame-shadow {
+  box-shadow:
+    0 20px 45px -10px rgba(0, 0, 0, 0.35),
+    0 8px 16px -4px rgba(0, 0, 0, 0.2),
+    0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.iphone-frame-center-shadow {
+  box-shadow:
+    0 30px 65px -12px rgba(0, 0, 0, 0.45),
+    0 12px 24px -6px rgba(0, 0, 0, 0.25),
+    0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+
+/* MOBILE DELAY SCALING (~40% faster) */
+@media (max-width: 768px) {
+  .hero-anim-eyebrow { animation-delay: 0.06s; }
+  .hero-anim-headline-1 { animation-delay: 0.15s; }
+  .hero-anim-headline-2 { animation-delay: 0.21s; }
+  .hero-anim-subhead { animation-delay: 0.27s; }
+  .hero-anim-cta { animation-delay: 0.36s; }
+  .hero-anim-trust { animation-delay: 0.45s; }
+
+  .hero-anim-iphone-center { animation-delay: 0.15s; }
+  .hero-anim-iphone-left { animation-delay: 0.25s; }
+  .hero-anim-iphone-right { animation-delay: 0.35s; }
+}
+
+/* ACCESSIBILITY: prefers-reduced-motion fallback */
+@media (prefers-reduced-motion: reduce) {
+  .hero-anim-eyebrow,
+  .hero-anim-headline-1,
+  .hero-anim-headline-2,
+  .hero-anim-subhead,
+  .hero-anim-cta,
+  .hero-anim-trust,
+  .hero-anim-iphone-left,
+  .hero-anim-iphone-center,
+  .hero-anim-iphone-right,
+  .animate-iphone-left,
+  .animate-iphone-center,
+  .animate-iphone-right {
+    animation: hero-fade-simple 0.3s ease-out 0s both !important;
+    transform: none !important;
+  }
+}
