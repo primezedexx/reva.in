@@ -57,17 +57,17 @@ function CustomerWalletCardContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   
-  const rawSlug = (routeParams?.slug as string) || '';
+  const rawSlug = (Array.isArray(routeParams?.slug) ? routeParams.slug[0] : (routeParams?.slug as string)) || '';
   let decodedSlug = rawSlug;
   try {
     decodedSlug = decodeURIComponent(rawSlug).trim();
   } catch {}
   const slug = decodedSlug;
 
-  const prefillPhone = searchParams.get('phone') || '';
-  const winbackOfferCode = searchParams.get('offer') || '';
-  const autoScanParam = searchParams.get('scan') || searchParams.get('stamp') || searchParams.get('claim');
-  const isTestMode = searchParams.get('test') === '1' || searchParams.get('test') === 'true' || searchParams.get('preview') === 'true';
+  const prefillPhone = searchParams?.get('phone') || '';
+  const winbackOfferCode = searchParams?.get('offer') || '';
+  const autoScanParam = searchParams?.get('scan') || searchParams?.get('stamp') || searchParams?.get('claim');
+  const isTestMode = searchParams?.get('test') === '1' || searchParams?.get('test') === 'true' || searchParams?.get('preview') === 'true';
 
   const [business, setBusiness] = useState<Business | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
@@ -516,7 +516,7 @@ function CustomerWalletCardContent() {
 
     try {
       sound.playClick();
-      const rewardTitle = selectedRedeemOffer?.title || business.reward_rule.reward_title;
+      const rewardTitle = selectedRedeemOffer?.title || business.reward_rule?.reward_title || 'Free Specialty Beverage';
       const res = await fetch('/api/reward/redeem', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -840,7 +840,7 @@ function CustomerWalletCardContent() {
                 {business.name}
               </h2>
               <p className="text-xs opacity-75 max-w-xs mx-auto">
-                {customTagline || `Collect digital stamps on every visit and earn your ${business.reward_rule.reward_title}`}
+                {customTagline || `Collect digital stamps on every visit and earn your ${business.reward_rule?.reward_title || 'specialty reward'}`}
               </p>
               {(business.address || business.area) && (
                 <div className="flex items-center justify-center gap-1.5 text-[11px] text-slate-500 font-medium pt-1">
@@ -1161,7 +1161,7 @@ function CustomerWalletCardContent() {
                   <div className="flex items-center gap-2 font-medium">
                     <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
                     <span>
-                      Earn <b>1 Stamp</b> on every order of <b>₹{business.reward_rule.min_order_for_stamp || business.min_order_for_stamp || 150}+</b>
+                      Earn <b>1 Stamp</b> on every order of <b>₹{business.reward_rule?.min_order_for_stamp || business.min_order_for_stamp || 150}+</b>
                     </span>
                   </div>
                   <span className="text-[10px] font-mono text-slate-400 uppercase font-bold">Counter Rule</span>
@@ -1173,7 +1173,7 @@ function CustomerWalletCardContent() {
                     onClick={() => {
                       setSelectedRedeemOffer({
                         title: grandRewardTitle,
-                        desc: business.reward_rule.reward_desc || 'Free Grand Loyalty Reward',
+                        desc: business.reward_rule?.reward_desc || 'Free Grand Loyalty Reward',
                         stampsNeeded: stampsNeeded,
                       });
                       setShowRedeemModal(true);
@@ -1896,10 +1896,10 @@ function CustomerWalletCardContent() {
             <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 text-left">
               <div className="text-[10px] font-bold text-slate-400 uppercase font-mono">Unlocked Treat:</div>
               <div className="text-sm font-bold text-[#0F172A] mt-0.5">
-                {selectedRedeemOffer?.title || business.reward_rule.reward_title}
+                {selectedRedeemOffer?.title || business.reward_rule?.reward_title || grandRewardTitle}
               </div>
               <div className="text-xs text-slate-500 mt-1">
-                {selectedRedeemOffer?.desc || business.reward_rule.reward_desc}
+                {selectedRedeemOffer?.desc || business.reward_rule?.reward_desc || 'Free unlocked reward treat'}
               </div>
             </div>
 

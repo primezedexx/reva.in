@@ -31,7 +31,13 @@ export default function ErrorBoundary({
 
       <div className="flex flex-col gap-2.5 w-full max-w-xs">
         <button
-          onClick={() => reset()}
+          onClick={() => {
+            try {
+              window.location.reload();
+            } catch {
+              reset();
+            }
+          }}
           className="w-full py-3.5 rounded-full bg-[#0F172A] text-white text-xs font-bold hover:bg-black transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer active:scale-95"
         >
           <RefreshCw className="w-4 h-4" />
@@ -45,6 +51,12 @@ export default function ErrorBoundary({
           <Home className="w-4 h-4 text-slate-400" />
           <span>Browse All Active Passes</span>
         </Link>
+
+        {error?.message && (
+          <div className="mt-2 p-2.5 rounded-xl bg-red-50/80 border border-red-200 text-red-700 font-mono text-[10px] text-left break-all">
+            <b>Error:</b> {error.message}
+          </div>
+        )}
       </div>
     </div>
   );
