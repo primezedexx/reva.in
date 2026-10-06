@@ -54,6 +54,8 @@ import {
   Upload,
   Navigation,
   Info,
+  Timer,
+  AlertCircle,
 } from 'lucide-react';
 import { sound } from '@/lib/sound';
 import { supabase } from '@/lib/supabase';
@@ -407,6 +409,17 @@ function CustomerPortalContent() {
     businessSlug: string;
     rewardTitle: string;
     code: string;
+  } | null>(null);
+
+  // 24-Hour Cooldown Popup Modal
+  const [cooldownModal, setCooldownModal] = useState<{
+    isOpen: boolean;
+    hoursRemaining: number;
+    minutesRemaining: number;
+    businessName?: string;
+    businessColor?: string;
+    nextAvailableAt?: string;
+    lastClaimedAt?: string;
   } | null>(null);
 
   // Business List from API with fallback
@@ -3407,8 +3420,13 @@ function CustomerPortalContent() {
                 .catch(() => {});
             }
           } else if (res.cooldownActive) {
-            setUploadToast(res.message || 'You can claim 1 stamp per 24 hours via self-serve QR.');
-            setTimeout(() => setUploadToast(null), 4000);
+            setCooldownModal({
+              isOpen: true,
+              hoursRemaining: res.hoursRemaining ?? 23,
+              minutesRemaining: res.minutesRemaining ?? 59,
+              businessName: res.business?.name,
+              businessColor: userPasses.find((p) => p.slug === res.business?.slug)?.brandColor || '#0F172A',
+            });
           } else if (res.guestRedirect && res.business?.slug) {
             // Find store in businesses list and prompt to join pass
             const targetBiz = businesses.find((b) => b.slug === res.business?.slug);
@@ -3422,6 +3440,91 @@ function CustomerPortalContent() {
           }
         }}
       />
+
+      {/* ========================================================================= */}
+      {/* 24-HOUR COOLDOWN POPUP MODAL (CUSTOMER QR CLAIM LIMIT & CASHIER REVISIT) */}
+      {/* ========================================================================= */}
+      {cooldownModal?.isOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-white text-slate-900 rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl relative border border-slate-100 text-center animate-stamp">
+            <button
+              onClick={() => setCooldownModal(null)}
+              className="absolute right-4 top-4 w-8 h-8 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center hover:bg-slate-200 transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="w-16 h-16 rounded-2xl bg-amber-50 border-2 border-amber-200 flex items-center justify-center mx-auto text-amber-600 shadow-inner">
+              <Clock className="w-8 h-8" />
+            </div>
+
+            <div className="space-y-1">
+              <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-700 bg-amber-100 px-2.5 py-0.5 rounded-full">
+                24-Hour Cooldown Active
+              </span>
+              <h3 className="text-lg font-display font-bold text-[#0F172A] mt-1">
+                Daily QR Stamp Limit
+              </h3>
+            </div>
+
+            {/* Exact notice message specified by user */}
+            <div className="bg-amber-50/90 border border-amber-200 rounded-2xl p-4 text-left space-y-2">
+              <div className="flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div className="space-y-1 text-xs">
+                  <p className="font-bold text-amber-950 leading-snug">
+                    You can claim a stamp from this method after 24 hours.
+                  </p>
+                  <p className="text-amber-900 leading-snug font-medium">
+                    If you are revisiting within 24 hours, then ask cashier for the stamp card.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Countdown timer badge */}
+            <div className="bg-slate-50 rounded-2xl p-3 border border-slate-200/80 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-1.5 text-slate-500">
+                <Timer className="w-3.5 h-3.5 text-amber-500" />
+                <span>Next QR stamp ready in:</span>
+              </div>
+              <span className="font-mono font-bold text-sm text-[#0F172A] bg-white px-2.5 py-0.5 rounded-lg border border-slate-200 shadow-2xs">
+                {cooldownModal.hoursRemaining}h {cooldownModal.minutesRemaining}m
+              </span>
+            </div>
+
+            {/* Cashier Pass Details (to easily show cashier when revisiting) */}
+            <div className="bg-slate-900 text-white rounded-2xl p-3.5 text-left space-y-1.5 shadow-sm">
+              <div className="flex items-center justify-between text-[10px] font-mono uppercase text-amber-400 font-bold">
+                <span>Show to Cashier at Counter</span>
+                <span>{cooldownModal.businessName || 'Loyalty Pass'}</span>
+              </div>
+              <div className="flex items-center justify-between pt-1 border-t border-white/10 text-xs">
+                <div>
+                  <div className="text-[10px] text-slate-400">Guest Name</div>
+                  <div className="font-bold text-white truncate max-w-[120px]">{customerName || 'Valued Guest'}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-[10px] text-slate-400">Registered Phone / ID</div>
+                  <div className="font-mono font-bold text-amber-300">
+                    {customerPhone || 'PASS-REVA'}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-1">
+              <button
+                onClick={() => setCooldownModal(null)}
+                className="w-full py-3 rounded-full text-white text-xs font-bold hover:brightness-110 shadow-md cursor-pointer uppercase tracking-wider transition-all"
+                style={{ backgroundColor: cooldownModal.businessColor || '#0F172A' }}
+              >
+                Understood / Show Cashier
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ========================================================================= */}
       {/* 6.1 PRIVACY & SECURITY MODAL */}
