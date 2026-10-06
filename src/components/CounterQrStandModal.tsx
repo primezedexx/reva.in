@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { Business } from '@/types/database';
 import { sound } from '@/lib/sound';
+import { getPublicOrigin } from '@/lib/public-url';
 
 interface CounterQrStandModalProps {
   isOpen: boolean;
@@ -86,7 +87,7 @@ export default function CounterQrStandModal({
   if (!isOpen || !business) return null;
 
   const currentTheme = STAND_THEMES.find((t) => t.id === selectedThemeId) || STAND_THEMES[0];
-  const hostOrigin = origin || (typeof window !== 'undefined' ? window.location.origin : 'https://reva.in');
+  const hostOrigin = (origin && !origin.includes('localhost') && !origin.includes('127.0.0.1')) ? origin : getPublicOrigin();
   const customerQrUrl = `${hostOrigin}/c/${business.slug || 'store'}`;
   const testPassUrl = `${customerQrUrl}?test=1`;
 

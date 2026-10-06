@@ -112,6 +112,7 @@ import BusinessSetupModal from '@/components/BusinessSetupModal';
 import SettingsSection from '@/components/SettingsSection';
 import PrivacySecurityModal from '@/components/PrivacySecurityModal';
 import CounterQrStandModal from '@/components/CounterQrStandModal';
+import { getPublicOrigin } from '@/lib/public-url';
 import {
   getPlanUpgradeDetails,
   getSubscriptionRemainingInfo,
@@ -1322,7 +1323,7 @@ function OwnerDashboardContent() {
       }
 
       const offerCode = `WINBACK-${name.replace(/\s+/g, '').toUpperCase().slice(0, 5)}-${Math.floor(1000 + Math.random() * 9000)}`;
-      const hostOrigin = origin || (typeof window !== 'undefined' ? window.location.origin : 'https://reva.in');
+      const hostOrigin = getPublicOrigin();
       const cardUrl = `${hostOrigin}/c/${selectedBusiness.slug}?phone=${encodeURIComponent(phone)}&offer=${encodeURIComponent(offerCode)}`;
       const messageText = `Hey ${name}! 👋 We miss seeing you at ${selectedBusiness.name} ☕\n\n🎁 *Special Treat for You:* ${selectedBusiness.winback_offer_text || 'Free treat with your next visit'}\n\nShow your digital card at the counter:\n👉 ${cardUrl}\n\nSee you soon! ✨`;
 
@@ -1708,9 +1709,9 @@ function OwnerDashboardContent() {
     );
   }
 
-  const customerQrUrl = selectedBusiness ? `${origin || 'https://reva.in'}/c/${selectedBusiness.slug}` : '';
+  const customerQrUrl = selectedBusiness ? `${getPublicOrigin()}/c/${selectedBusiness.slug}` : '';
   const testPassUrl = selectedBusiness ? `/c/${selectedBusiness.slug}?test=1` : '';
-  const fullTestPassUrl = selectedBusiness ? `${origin || 'https://reva.in'}/c/${selectedBusiness.slug}?test=1` : '';
+  const fullTestPassUrl = selectedBusiness ? `${getPublicOrigin()}/c/${selectedBusiness.slug}?test=1` : '';
 
   const subInfo = getSubscriptionRemainingInfo(selectedBusiness);
   const isTrial = selectedBusiness?.trial_active ?? (selectedBusiness?.subscription_status === 'trialing');
