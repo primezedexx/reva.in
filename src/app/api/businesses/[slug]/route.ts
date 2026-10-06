@@ -15,13 +15,12 @@ export async function GET(
   try {
     const params = await props.params;
     const { slug } = params;
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(slug);
-    let business = isUuid ? await db.getBusinessById(slug) : await db.getBusinessBySlug(slug);
-    if (!business && !isUuid) {
-      business = await db.getBusinessById(slug);
-    } else if (!business && isUuid) {
-      business = await db.getBusinessBySlug(slug);
-    }
+    let decodedSlug = slug;
+    try {
+      decodedSlug = decodeURIComponent(slug);
+    } catch {}
+
+    const business = await db.getBusinessBySlug(decodedSlug);
 
     if (!business) {
       return NextResponse.json({ error: 'Business not found' }, { status: 404 });

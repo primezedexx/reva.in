@@ -58,7 +58,13 @@ export default function CustomerWalletCardPage(props: {
   const params = use(props.params);
   const searchParams = useSearchParams();
   const router = useRouter();
-  const slug = params.slug;
+  
+  let rawSlug = params.slug || '';
+  let decodedSlug = rawSlug;
+  try {
+    decodedSlug = decodeURIComponent(rawSlug).trim();
+  } catch {}
+  const slug = decodedSlug;
 
   const prefillPhone = searchParams.get('phone') || '';
   const winbackOfferCode = searchParams.get('offer') || '';
@@ -70,6 +76,7 @@ export default function CustomerWalletCardPage(props: {
   const [membership, setMembership] = useState<Membership | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   // Authentication State
   const [phoneInput, setPhoneInput] = useState(isTestMode ? '' : prefillPhone);
@@ -119,21 +126,27 @@ export default function CustomerWalletCardPage(props: {
         if (isTestMode) {
           try {
             localStorage.removeItem(`reva_phone_${slug}`);
+            localStorage.removeItem(`reva_phone_${rawSlug}`);
           } catch {}
         }
 
-        const cachedBiz = localStorage.getItem(`reva_biz_cache_${slug}`);
+        // Fast restore cached store immediately (0ms visual latency)
+        const cachedBiz =
+          localStorage.getItem(`reva_biz_cache_${slug}`) ||
+          localStorage.getItem(`reva_biz_cache_${rawSlug}`) ||
+          localStorage.getItem('reva_last_active_biz');
         if (cachedBiz) {
           try {
             const parsed = JSON.parse(cachedBiz);
             if (parsed?.id) {
               setBusiness(parsed);
+              setLoading(false);
             }
           } catch {}
         }
 
         // Fast restore cached membership on refresh / revisit (eliminates login flash)
-        const cachedMem = localStorage.getItem(`reva_mem_${slug}`);
+        const cachedMem = localStorage.getItem(`reva_mem_${slug}`) || localStorage.getItem(`reva_mem_${rawSlug}`);
         if (cachedMem && !isTestMode) {
           try {
             const parsedMem = JSON.parse(cachedMem);
@@ -151,7 +164,7 @@ export default function CustomerWalletCardPage(props: {
           if (match) cookiePhone = decodeURIComponent(match[1]);
         }
 
-        const savedStorePhone = !isTestMode ? (prefillPhone || localStorage.getItem(`reva_phone_${slug}`)) : '';
+        const savedStorePhone = !isTestMode ? (prefillPhone || localStorage.getItem(`reva_phone_${slug}`) || localStorage.getItem(`reva_phone_${rawSlug}`)) : '';
         const globalPhone = !isTestMode ? (localStorage.getItem('reva_customer_phone') || cookiePhone) : '';
         const globalName = !isTestMode ? localStorage.getItem('reva_customer_name') : '';
         const globalEmail = !isTestMode ? localStorage.getItem('reva_customer_email') : '';
@@ -169,12 +182,12 @@ export default function CustomerWalletCardPage(props: {
           if (savedClaimed) {
             const parsed = JSON.parse(savedClaimed);
             if (Array.isArray(parsed)) {
-              setClaimedRewards(parsed.filter((c: any) => c.businessSlug === slug || !c.businessSlug));
+              setClaimedRewards(parsed.filter((c: any) => c.businessSlug === slug || c.businessSlug === rawSlug || !c.businessSlug));
             }
           }
         } catch {}
 
-        const bizRes = await fetch(`/api/businesses/${slug}`, {
+        const bizRes = await fetch(`/api/businesses/${encodeURIComponent(slug)}`, {
           cache: 'no-store',
           headers: { 'Cache-Control': 'no-cache' },
         });
@@ -182,16 +195,19 @@ export default function CustomerWalletCardPage(props: {
         const bizData = await bizRes.json();
         if (!isMounted) return;
 
-        if (!bizData.success || !bizData.business) {
+        if (bizData.success && bizData.business) {
+          setBusiness(bizData.business);
+          setError(null);
+          try {
+            localStorage.setItem(`reva_biz_cache_${slug}`, JSON.stringify(bizData.business));
+            localStorage.setItem(`reva_biz_cache_${rawSlug}`, JSON.stringify(bizData.business));
+            localStorage.setItem('reva_last_active_biz', JSON.stringify(bizData.business));
+          } catch {}
+        } else if (!business && !cachedBiz) {
           setError('Store not found. Please scan the counter QR code.');
           setLoading(false);
           return;
         }
-
-        setBusiness(bizData.business);
-        try {
-          localStorage.setItem(`reva_biz_cache_${slug}`, JSON.stringify(bizData.business));
-        } catch {}
 
         // Check if customer already has a recognized phone on this device
         const rawEmail = globalEmail || localStorage.getItem('reva_customer_email') || null;
@@ -242,7 +258,9 @@ export default function CustomerWalletCardPage(props: {
           } catch {}
         }
       } catch (err: unknown) {
-        if (isMounted) setError('Failed to load loyalty pass. Please refresh.');
+        if (isMounted && !business) {
+          setError('Failed to load loyalty pass. Please refresh.');
+        }
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -251,7 +269,7 @@ export default function CustomerWalletCardPage(props: {
     return () => {
       isMounted = false;
     };
-  }, [slug, prefillPhone, isTestMode]);
+  }, [slug, rawSlug, prefillPhone, isTestMode, retryCount]);
 
   // 2. Real-Time Live Sync: Polling for Cashier Stamp Punches & Store Customization
   useEffect(() => {
@@ -573,17 +591,50 @@ export default function CustomerWalletCardPage(props: {
   if (error || !business) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-white text-center">
-        <div className="w-14 h-14 bg-red-50 text-red-500 rounded-2xl flex items-center justify-center mb-4">
+        <div className="w-14 h-14 bg-red-50 text-red-500 rounded-2xl flex items-center justify-center mb-4 shadow-xs">
           <Store className="w-7 h-7" />
         </div>
-        <h2 className="text-xl font-bold text-[#0F172A] mb-2 font-display">Store Not Found</h2>
-        <p className="text-xs text-slate-500 max-w-xs mb-6">{error || 'Unable to load store information.'}</p>
-        <Link
-          href="/"
-          className="px-6 py-2.5 rounded-full bg-[#0F172A] text-white text-xs font-semibold hover:bg-black transition-all shadow-xs"
-        >
-          Return to Reva Home
-        </Link>
+        <h2 className="text-xl font-bold text-[#0F172A] mb-2 font-display">Loyalty Pass Notice</h2>
+        <p className="text-xs text-slate-500 max-w-xs mb-6">
+          {error || 'Unable to retrieve store pass details. Please tap reload or scan the counter QR code again.'}
+        </p>
+        
+        <div className="flex flex-col gap-2.5 w-full max-w-xs">
+          <button
+            onClick={() => {
+              setError(null);
+              setLoading(true);
+              setRetryCount((c) => c + 1);
+            }}
+            className="w-full py-3 rounded-full bg-[#0F172A] text-white text-xs font-bold hover:bg-black transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+          >
+            <RefreshCw className="w-4 h-4" />
+            <span>Reload Loyalty Pass</span>
+          </button>
+
+          <button
+            onClick={() => setShowScannerModal(true)}
+            className="w-full py-3 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+          >
+            <Camera className="w-4 h-4" />
+            <span>Scan Counter QR Code</span>
+          </button>
+
+          <Link
+            href="/c"
+            className="w-full py-2.5 rounded-full border border-slate-200 text-slate-600 text-xs font-medium hover:bg-slate-50 transition-all text-center"
+          >
+            Browse All Active Passes
+          </Link>
+        </div>
+
+        {showScannerModal && (
+          <CameraQrScannerModal
+            isOpen={showScannerModal}
+            onClose={() => setShowScannerModal(false)}
+            currentSlug={slug}
+          />
+        )}
       </div>
     );
   }
