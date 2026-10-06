@@ -888,6 +888,10 @@ class RevaDatabase {
       stamps_needed: stampsNeeded,
       reward_title: rewardTitle,
       min_order_for_stamp: minOrder,
+      expiry_days:
+        updates.reward_rule?.expiry_days !== undefined
+          ? updates.reward_rule.expiry_days
+          : (baseRule.expiry_days ?? 60),
       theme_config: themeConfig,
       category: updates.category || existing?.category,
       city: updates.city || existing?.city,
@@ -1034,7 +1038,8 @@ class RevaDatabase {
         address: businessData.address,
         google_review_url: businessData.google_review_url,
         plan: businessData.plan || 'growth',
-        trial_ends_at: businessData.trial_ends_at || new Date(Date.now() + 3 * 86400000).toISOString(),
+        expiry_days: businessData.reward_rule?.expiry_days ?? 60,
+        trial_ends_at: businessData.trial_ends_at || new Date(Date.now() + 30 * 86400000).toISOString(),
         subscription_status: businessData.subscription_status || 'trialing',
         trial_active: businessData.trial_active ?? true,
         is_setup_completed: isSetup,
@@ -1068,7 +1073,7 @@ class RevaDatabase {
         },
       ],
       plan: businessData.plan || 'growth',
-      trial_ends_at: businessData.trial_ends_at || new Date(Date.now() + 3 * 86400000).toISOString(),
+      trial_ends_at: businessData.trial_ends_at || new Date(Date.now() + 30 * 86400000).toISOString(),
       subscription_status: businessData.subscription_status || 'trialing',
       trial_active: businessData.trial_active ?? true,
       created_at: new Date().toISOString(),

@@ -1168,6 +1168,19 @@ function CustomerWalletCardContent() {
                   <span className="text-[10px] font-mono text-slate-400 uppercase font-bold">Counter Rule</span>
                 </div>
 
+                {/* Reward Expiry / Stamp Validity Badge */}
+                {Boolean(business.reward_rule?.expiry_days && business.reward_rule.expiry_days > 0) && (
+                  <div className="bg-amber-50/80 border border-amber-200/80 rounded-2xl py-2 px-3.5 flex items-center justify-between text-xs text-amber-950">
+                    <div className="flex items-center gap-2 font-medium">
+                      <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+                      <span>
+                        Reward Validity: <b>Complete within {business.reward_rule?.expiry_days} days</b>
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-mono text-amber-700 uppercase font-bold">{business.reward_rule?.expiry_days}d Limit</span>
+                  </div>
+                )}
+
                 {/* Primary Action Button: Redeem Grand Reward (When full card stamps completed) */}
                 {isRewardReady && (
                   <button
@@ -1902,6 +1915,12 @@ function CustomerWalletCardContent() {
               <div className="text-xs text-slate-500 mt-1">
                 {selectedRedeemOffer?.desc || business.reward_rule?.reward_desc || 'Free unlocked reward treat'}
               </div>
+              {Boolean(business.reward_rule?.expiry_days && business.reward_rule.expiry_days > 0) && (
+                <div className="text-[11px] font-mono text-amber-800 bg-amber-50/80 px-2.5 py-1 rounded-xl border border-amber-200/60 mt-2 flex items-center justify-between">
+                  <span>Validity Window:</span>
+                  <span className="font-bold">{business.reward_rule?.expiry_days} Days</span>
+                </div>
+              )}
             </div>
 
             <div className="flex gap-2 pt-1">

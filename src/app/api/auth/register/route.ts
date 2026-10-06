@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { email, password, businessName, category, city, plan } = body;
     const selectedPlan = (plan === 'starter' || plan === 'pro' || plan === 'growth') ? plan : 'growth';
-    const trialEndsAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
+    const trialEndsAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
     if (!email || !password || !businessName) {
       return NextResponse.json(

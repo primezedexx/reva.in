@@ -411,7 +411,7 @@ function LoginContent() {
 
       if (error) {
         if (error.message.includes('Invalid login credentials')) {
-          setErrorMessage('Invalid email or password. Please double-check or try the 1-Click Demo below.');
+          setErrorMessage('Invalid email or password. Please double-check your credentials.');
         } else {
           setErrorMessage(error.message);
         }
@@ -499,7 +499,7 @@ function LoginContent() {
       }
 
       sound.playRewardFanfare();
-      setSuccessMessage('🎉 3-Day Free Trial started! Opening your dashboard...');
+      setSuccessMessage('🎉 30-Day Free Trial started! Opening your dashboard...');
       router.push(`/dashboard?businessId=${result.business?.id || ''}&new=true`);
     } catch (err: unknown) {
       console.error('Registration exception:', err);
@@ -803,32 +803,6 @@ function LoginContent() {
                 </div>
               </div>
             </div>
-
-            {/* 1-Tap Quick Demo Customer Access */}
-            <div className="pt-1">
-              <button
-                type="button"
-                onClick={handleDemoCustomerLogin}
-                className="w-full p-3.5 rounded-2xl border border-emerald-200/80 bg-emerald-50/70 hover:bg-emerald-100/80 transition-all flex items-center justify-between text-xs font-semibold text-emerald-950 cursor-pointer shadow-2xs group"
-              >
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-2xs">
-                    <Wallet className="w-4 h-4" />
-                  </div>
-                  <div className="text-left">
-                    <div className="font-display font-bold flex items-center gap-1.5 text-emerald-950">
-                      <span>Demo Customer Pass</span>
-                      <span className="px-1.5 py-0.2 rounded bg-emerald-200 text-emerald-900 text-[9px] font-mono font-bold">1-TAP</span>
-                    </div>
-                    <div className="text-[10px] text-emerald-700 font-mono">Aarav Sharma • +91 98765 43210</div>
-                  </div>
-                </div>
-                <span className="text-[11px] font-mono font-bold text-emerald-800 group-hover:translate-x-0.5 transition-transform flex items-center gap-1">
-                  <span>Open Passes</span>
-                  <span>→</span>
-                </span>
-              </button>
-            </div>
           </div>
         )}
 
@@ -955,7 +929,7 @@ function LoginContent() {
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <label className="block text-xs font-semibold text-slate-700">
-                      Select Plan (3-Day Free Trial)
+                      Select Plan (30-Day Free Trial)
                     </label>
                     <span className="text-[10px] font-mono text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/60">
                       ₹0 DUE TODAY
@@ -1117,7 +1091,7 @@ function LoginContent() {
                 <div className="p-2.5 bg-emerald-50 rounded-xl border border-emerald-200 text-[11px] text-emerald-900 flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
                     <Check className="w-4 h-4 text-emerald-600 shrink-0 stroke-[3]" />
-                    <span><b>3-Day Free Trial</b> • No card required upfront</span>
+                    <span><b>30-Day Free Trial</b> • No card required upfront</span>
                   </div>
                   <span className="font-mono text-[9px] font-bold text-emerald-800 uppercase">Instant</span>
                 </div>
@@ -1134,7 +1108,7 @@ function LoginContent() {
                     </span>
                   ) : (
                     <>
-                      <span>Start 3-Day Free Trial</span>
+                      <span>Start 30-Day Free Trial</span>
                       <ArrowRight className="w-4 h-4" />
                     </>
                   )}
@@ -1192,28 +1166,6 @@ function LoginContent() {
               </form>
             )}
 
-            {/* 1-Click Sandbox Account Access */}
-            <div className="w-full mt-5 pt-4 border-t border-slate-200">
-              <button
-                type="button"
-                onClick={handleDemoInstantLogin}
-                className="w-full p-3 rounded-2xl border border-slate-200/80 bg-white hover:bg-slate-50 transition-colors flex items-center justify-between text-xs font-semibold text-slate-700 cursor-pointer shadow-2xs group active:scale-[0.99]"
-              >
-                <div className="flex items-center gap-2.5">
-                  <div className="w-7 h-7 rounded-xl bg-[#0F172A] text-white flex items-center justify-center">
-                    <Coffee className="w-3.5 h-3.5" />
-                  </div>
-                  <div className="text-left">
-                    <div className="font-display font-bold text-slate-900 flex items-center gap-1.5">
-                      <span>Boba &amp; Brew Artisan Cafe</span>
-                      <span className="px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 text-[9px] font-mono font-bold">PILOT</span>
-                    </div>
-                    <div className="text-[10px] text-slate-400 font-normal">7 Active Customers • 6 Memberships in Supabase</div>
-                  </div>
-                </div>
-                <span className="text-[11px] font-mono font-bold text-[#0F172A] group-hover:translate-x-0.5 transition-transform">1-Click Demo →</span>
-              </button>
-            </div>
           </div>
         )}
 

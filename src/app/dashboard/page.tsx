@@ -2076,7 +2076,7 @@ function OwnerDashboardContent() {
                           <span className="text-[11px] font-mono uppercase font-bold tracking-wider text-slate-300">Your Plan</span>
                         </div>
                         <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${subInfo?.isTrial ? 'bg-amber-400/20 text-amber-300 border border-amber-400/30' : 'bg-emerald-400/20 text-emerald-300 border border-emerald-400/30'}`}>
-                          {subInfo?.isTrial ? '3-Day Trial' : 'Active License'}
+                          {subInfo?.isTrial ? '30-Day Trial' : 'Active License'}
                         </span>
                       </div>
 
@@ -2243,7 +2243,7 @@ function OwnerDashboardContent() {
               <Sparkles className="w-5 h-5 text-amber-300 shrink-0" />
               <div>
                 <div className="font-display font-bold text-sm">🎉 Congratulations! {selectedBusiness?.name} is live!</div>
-                <div className="text-xs text-emerald-100 font-medium">Your store loyalty pass QR code and counter tools are ready to use with your 3-day free trial.</div>
+                <div className="text-xs text-emerald-100 font-medium">Your store loyalty pass QR code and counter tools are ready to use with your 30-day free trial.</div>
               </div>
             </div>
             <button
@@ -5056,7 +5056,7 @@ function OwnerDashboardContent() {
                     </h3>
                     <p className="text-xs text-slate-500 mt-0.5">
                       {subInfo?.fullStatusText || (selectedBusiness?.trial_active
-                        ? 'Currently on 3-Day Free Trial. Activate your 1-year license now.'
+                        ? 'Currently on 30-Day Free Trial. Activate your 1-year license now.'
                         : 'Active 1-Year License via Razorpay.')}
                     </p>
                   </div>

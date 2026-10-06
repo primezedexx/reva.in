@@ -8,6 +8,8 @@ import crypto from 'crypto';
 
 export type SubscriptionPlanType = 'starter' | 'growth' | 'pro';
 
+export const TRIAL_DAYS = 30;
+
 export const PLAN_PRICING: Record<
   SubscriptionPlanType,
   { amountPaise: number; amountInr: number; name: string; regularLimit: string; level: number }
@@ -128,7 +130,7 @@ export function getSubscriptionRemainingInfo(business: {
   if (isTrial) {
     const trialEnds = business.trial_ends_at
       ? new Date(business.trial_ends_at)
-      : new Date(Date.now() + 3 * 86400000);
+      : new Date(Date.now() + TRIAL_DAYS * 86400000);
     const now = new Date();
     const diffMs = trialEnds.getTime() - now.getTime();
     const daysRemaining = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));

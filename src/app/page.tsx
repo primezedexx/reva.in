@@ -1111,7 +1111,7 @@ export default function LandingPage() {
                 href="/login?mode=register&trial=true"
                 className="w-full py-3 sm:py-3.5 rounded-full bg-white text-slate-900 font-semibold text-xs text-center transition-all hover:bg-slate-100 block cursor-pointer shadow-xs uppercase tracking-wide"
               >
-                Start 3-Day Free Trial
+                Start 30-Day Free Trial
               </Link>
             </div>
           </div>
@@ -1288,7 +1288,7 @@ export default function LandingPage() {
             Simple, Transparent Pricing
           </h2>
           <p className="text-xs sm:text-base text-slate-600 font-body">
-            All plans include full platform access, a 3-day free trial, and zero setup fees. One recovered customer pays for the whole year.
+            All plans include full platform access, a 30-day free trial, and zero setup fees. One recovered customer pays for the whole year.
           </p>
         </div>
 
@@ -1335,7 +1335,7 @@ export default function LandingPage() {
               href="/login?mode=register&plan=starter&trial=true"
               className="w-full py-3.5 rounded-full bg-white hover:bg-slate-50 border border-slate-200 text-[#0F172A] font-semibold text-xs text-center transition-all block uppercase tracking-wider active:scale-98"
             >
-              Start 3-Day Free Trial
+              Start 30-Day Free Trial
             </Link>
           </div>
 
@@ -1398,7 +1398,7 @@ export default function LandingPage() {
               href="/login?mode=register&plan=growth&trial=true"
               className="w-full py-3.5 rounded-full bg-[#0F172A] hover:bg-black text-white font-semibold text-xs text-center transition-all block shadow-md uppercase tracking-wider active:scale-98"
             >
-              Start 3-Day Free Trial
+              Start 30-Day Free Trial
             </Link>
           </div>
 
@@ -1452,7 +1452,7 @@ export default function LandingPage() {
               href="/login?mode=register&plan=pro&trial=true"
               className="w-full py-3.5 rounded-full bg-white hover:bg-slate-50 border border-slate-200 text-[#0F172A] font-semibold text-xs text-center transition-all block uppercase tracking-wider active:scale-98"
             >
-              Start 3-Day Free Trial
+              Start 30-Day Free Trial
             </Link>
           </div>
         </div>
@@ -1537,7 +1537,7 @@ export default function LandingPage() {
             href="/login?mode=register&trial=true"
             className="w-full sm:w-auto px-8 py-3.5 rounded-full bg-[#0F172A] hover:bg-black text-white font-semibold text-xs sm:text-sm transition-all inline-flex items-center justify-center gap-2 shadow-md cursor-pointer uppercase tracking-wider active:scale-98"
           >
-            <span>Start 3-Day Free Trial</span>
+            <span>Start 30-Day Free Trial</span>
             <ArrowRight className="w-4 h-4" />
           </Link>
         </div>

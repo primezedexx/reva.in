@@ -69,6 +69,7 @@ export interface RewardRule {
   reward_title: string;
   reward_desc: string;
   min_order_for_stamp?: number; // Minimum bill value in INR (e.g. ₹150) to earn 1 stamp
+  expiry_days?: number; // Expiry duration in days (e.g. 30, 60, 90 days; 0 or undefined for no expiry)
   theme_config?: ThemeConfig;
   category?: string;
   city?: string;
@@ -94,6 +95,7 @@ export interface StoreOffer {
   desc?: string; // Short condition e.g. 'Valid with ₹150+ order'
   type?: 'milestone' | 'welcome' | 'winback' | 'custom' | 'birthday';
   min_order?: number;
+  expiry_days?: number;
   code?: string;
   icon?: 'gift' | 'coffee' | 'sparkles' | 'flame' | 'star' | 'tag' | 'paw' | 'heart';
 }

@@ -30,6 +30,7 @@ import {
   Tag,
   Heart,
   Zap,
+  Clock,
 } from 'lucide-react';
 import {
   Business,
@@ -101,6 +102,9 @@ export default function BusinessSetupModal({
   const [winbackOffer, setWinbackOffer] = useState(
     business.winback_offer_text || 'Complimentary Belgian Waffle or treat with your next visit'
   );
+  const [expiryDays, setExpiryDays] = useState<number>(
+    business.reward_rule?.expiry_days !== undefined ? business.reward_rule.expiry_days : 60
+  );
 
   // Step 3: Visual Theme & Pass Branding
   const [selectedPreset, setSelectedPreset] = useState<string>(
@@ -145,6 +149,7 @@ export default function BusinessSetupModal({
       setWinbackOffer(
         business.winback_offer_text || 'Complimentary Belgian Waffle or treat with your next visit'
       );
+      setExpiryDays(business.reward_rule?.expiry_days !== undefined ? business.reward_rule.expiry_days : 60);
 
       if (theme) {
         setSelectedPreset(theme.preset || 'warm_latte');
@@ -208,6 +213,7 @@ export default function BusinessSetupModal({
         reward_title: rewardTitle.trim() || 'Free Specialty Beverage',
         reward_desc: rewardDesc.trim() || 'Any handcrafted drink on the house',
         min_order_for_stamp: Number(minOrder) || 150,
+        expiry_days: Number(expiryDays) >= 0 ? Number(expiryDays) : 60,
         theme_config: compiledTheme,
       };
 
@@ -628,6 +634,55 @@ export default function BusinessSetupModal({
                       placeholder="e.g. Any handcrafted beverage or fresh sourdough on the house"
                       className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 bg-white text-slate-900 focus:outline-none focus:border-[#0F172A]"
                     />
+                  </div>
+
+                  {/* Reward Expiry / Stamp Validity (Days) */}
+                  <div className="p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200/80 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-amber-600" />
+                        <span>Reward Expiry / Stamp Validity (Days)</span>
+                      </label>
+                      <span className="text-[10px] font-mono text-amber-800 font-bold bg-amber-100 px-2 py-0.5 rounded-full">
+                        {expiryDays > 0 ? `${expiryDays} Days` : 'No Expiry'}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-5 gap-1.5">
+                      {[30, 45, 60, 90, 0].map((d) => (
+                        <button
+                          key={d}
+                          type="button"
+                          onClick={() => {
+                            setExpiryDays(d);
+                            sound.playClick();
+                          }}
+                          className={`py-1.5 px-1 rounded-xl text-[11px] font-mono font-bold transition-all cursor-pointer border ${
+                            expiryDays === d
+                              ? 'bg-[#0F172A] text-emerald-400 border-[#0F172A] shadow-xs'
+                              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                          }`}
+                        >
+                          {d === 0 ? 'Never' : `${d}d`}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min={0}
+                        max={365}
+                        value={expiryDays}
+                        onChange={(e) => setExpiryDays(Math.max(0, Number(e.target.value) || 0))}
+                        placeholder="Enter custom days (0 = No expiry)"
+                        className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 bg-white text-slate-900 font-mono focus:outline-none focus:border-[#0F172A]"
+                      />
+                      <span className="absolute right-3.5 top-2 text-[10px] font-mono text-slate-400">
+                        days {expiryDays === 0 ? '(no expiry)' : ''}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-amber-800">
+                      Days customers have to complete {stampsNeeded} stamps and claim their reward.
+                    </p>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">

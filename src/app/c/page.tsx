@@ -745,7 +745,7 @@ function CustomerPortalContent() {
           rewardTitle: pass.rewardTitle || pass.reward_rule?.reward_title || 'Free Loyalty Reward',
           stamps: current,
           totalNeeded: needed,
-          expiry: 'Ready to claim at counter',
+          expiry: pass.reward_rule?.expiry_days ? `Valid for ${pass.reward_rule.expiry_days} days` : 'Ready to claim at counter',
           image: pass.logo_url,
         });
       }
@@ -1841,7 +1841,9 @@ function CustomerPortalContent() {
                               rewardTitle: selectedPass.rewardTitle,
                               stamps: selectedPass.stamps,
                               totalNeeded: selectedPass.totalStamps,
-                              expiry: 'Expires in 14 days',
+                              expiry: selectedPass.reward_rule?.expiry_days
+                                ? `Expires in ${selectedPass.reward_rule.expiry_days} days`
+                                : 'Expires in 30 days',
                             })
                           }
                           className="px-3.5 py-1.5 rounded-xl bg-slate-950 hover:bg-black text-white font-display font-bold text-xs shadow-xs shrink-0 cursor-pointer active:scale-95 transition-all"
@@ -1862,6 +1864,15 @@ function CustomerPortalContent() {
                             Min ₹{selectedPass.minOrder || 150}+
                           </span>
                         </div>
+                        {Boolean(selectedPass.reward_rule?.expiry_days && selectedPass.reward_rule.expiry_days > 0) && (
+                          <div className="text-[10px] text-white/80 font-mono flex items-center justify-between px-1">
+                            <span className="flex items-center gap-1">
+                              <Clock className="w-3 h-3 text-amber-300 shrink-0" />
+                              <span>Stamps validity:</span>
+                            </span>
+                            <span className="font-bold text-amber-200">{selectedPass.reward_rule?.expiry_days} days to complete</span>
+                          </div>
+                        )}
                       </div>
                     )}
 
