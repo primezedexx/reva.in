@@ -74,6 +74,7 @@ export interface RewardRule {
   city?: string;
   area?: string;
   phone?: string;
+  phone_verified?: boolean;
   address?: string;
   google_review_url?: string;
   instagram_url?: string;
@@ -112,6 +113,7 @@ export interface Business {
   longitude?: number;
   maps_url?: string;
   phone?: string;
+  phone_verified?: boolean;
   google_review_url?: string;
   instagram_url?: string;
   owner_id?: string;

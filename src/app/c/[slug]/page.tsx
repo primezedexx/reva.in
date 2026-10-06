@@ -573,6 +573,63 @@ function CustomerWalletCardContent() {
     }
   }
 
+  const stampsNeeded = business?.reward_rule?.stamps_needed || 6;
+  const grandRewardTitle = business?.reward_rule?.reward_title || 'Free Specialty Beverage';
+  const minOrder = business?.reward_rule?.min_order_for_stamp || business?.min_order_for_stamp || 150;
+  const currentStamps = membership?.stamps ?? 0;
+  const stampsRemaining = Math.max(0, stampsNeeded - currentStamps);
+  const isRewardReady = currentStamps >= stampsNeeded;
+
+  // Active offers configured for this business
+  const activeOffers = (business?.active_offers && Array.isArray(business.active_offers))
+    ? business.active_offers
+    : [];
+
+  // Derived ready-to-claim unlocked rewards for this store (placed before any early returns to satisfy React Hook rules)
+  const unlockedRewardsList = useMemo(() => {
+    if (!business) return [];
+    const list: Array<{
+      id: string;
+      businessName: string;
+      businessSlug: string;
+      brandColor: string;
+      rewardTitle: string;
+      stamps: number;
+      totalNeeded: number;
+    }> = [];
+
+    if (currentStamps >= stampsNeeded && grandRewardTitle) {
+      list.push({
+        id: 'main_store_reward',
+        businessName: business.name,
+        businessSlug: business.slug,
+        brandColor: business.brand_color || '#0F172A',
+        rewardTitle: grandRewardTitle,
+        stamps: currentStamps,
+        totalNeeded: stampsNeeded,
+      });
+    }
+
+    if (business.active_offers && Array.isArray(business.active_offers)) {
+      for (const off of business.active_offers) {
+        const offNeeded = off.stamps_needed || stampsNeeded;
+        if (currentStamps >= offNeeded && off.title !== grandRewardTitle) {
+          list.push({
+            id: off.id || `off_${off.title}`,
+            businessName: business.name,
+            businessSlug: business.slug,
+            brandColor: business.brand_color || '#0F172A',
+            rewardTitle: off.title,
+            stamps: currentStamps,
+            totalNeeded: offNeeded,
+          });
+        }
+      }
+    }
+
+    return list;
+  }, [currentStamps, stampsNeeded, grandRewardTitle, business]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-white">
@@ -636,62 +693,6 @@ function CustomerWalletCardContent() {
       </div>
     );
   }
-
-  const stampsNeeded = business.reward_rule?.stamps_needed || 6;
-  const grandRewardTitle = business.reward_rule?.reward_title || 'Free Specialty Beverage';
-  const minOrder = business.reward_rule?.min_order_for_stamp || business.min_order_for_stamp || 150;
-  const currentStamps = membership?.stamps ?? 0;
-  const stampsRemaining = Math.max(0, stampsNeeded - currentStamps);
-  const isRewardReady = currentStamps >= stampsNeeded;
-
-  // Active offers configured for this business
-  const activeOffers = (business.active_offers && Array.isArray(business.active_offers))
-    ? business.active_offers
-    : [];
-
-  // Derived ready-to-claim unlocked rewards for this store
-  const unlockedRewardsList = useMemo(() => {
-    const list: Array<{
-      id: string;
-      businessName: string;
-      businessSlug: string;
-      brandColor: string;
-      rewardTitle: string;
-      stamps: number;
-      totalNeeded: number;
-    }> = [];
-
-    if (currentStamps >= stampsNeeded && grandRewardTitle) {
-      list.push({
-        id: 'main_store_reward',
-        businessName: business.name,
-        businessSlug: business.slug,
-        brandColor: business.brand_color || '#0F172A',
-        rewardTitle: grandRewardTitle,
-        stamps: currentStamps,
-        totalNeeded: stampsNeeded,
-      });
-    }
-
-    if (business.active_offers && Array.isArray(business.active_offers)) {
-      for (const off of business.active_offers) {
-        const offNeeded = off.stamps_needed || stampsNeeded;
-        if (currentStamps >= offNeeded && off.title !== grandRewardTitle) {
-          list.push({
-            id: off.id || `off_${off.title}`,
-            businessName: business.name,
-            businessSlug: business.slug,
-            brandColor: business.brand_color || '#0F172A',
-            rewardTitle: off.title,
-            stamps: currentStamps,
-            totalNeeded: offNeeded,
-          });
-        }
-      }
-    }
-
-    return list;
-  }, [currentStamps, stampsNeeded, grandRewardTitle, business]);
 
   const theme = business.theme_config || business.reward_rule?.theme_config;
   const pageBg = resolvePageBackground(theme);

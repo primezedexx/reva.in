@@ -752,6 +752,7 @@ class RevaDatabase {
       if (rr.city && !b.city) b.city = rr.city;
       if (rr.area && !b.area) b.area = rr.area;
       if (rr.phone && !b.phone) b.phone = rr.phone;
+      if (rr.phone_verified !== undefined && b.phone_verified === undefined) b.phone_verified = rr.phone_verified;
       if (rr.address && !b.address) b.address = rr.address;
       if (rr.google_review_url && !b.google_review_url) b.google_review_url = rr.google_review_url;
       if (rr.instagram_url && !b.instagram_url) b.instagram_url = rr.instagram_url;
@@ -891,7 +892,13 @@ class RevaDatabase {
       category: updates.category || existing?.category,
       city: updates.city || existing?.city,
       area: updates.area || existing?.area,
-      phone: updates.phone || existing?.phone,
+      phone: updates.phone !== undefined ? updates.phone : existing?.phone,
+      phone_verified:
+        (updates as any).phone_verified !== undefined
+          ? (updates as any).phone_verified
+          : ((updates.reward_rule as any)?.phone_verified !== undefined
+            ? (updates.reward_rule as any)?.phone_verified
+            : (existing?.reward_rule as any)?.phone_verified ?? false),
       address: updates.address || existing?.address,
       google_review_url: updates.google_review_url || existing?.google_review_url,
       instagram_url: updates.instagram_url || existing?.instagram_url,
@@ -903,8 +910,10 @@ class RevaDatabase {
       is_setup_completed: isSetupDone,
     };
 
-    const currentOffers = updates.active_offers || existing?.active_offers || [];
-    if (currentOffers.length > 0) {
+    const currentOffers = updates.active_offers !== undefined ? updates.active_offers : (existing?.active_offers || []);
+    if (updates.active_offers !== undefined) {
+      effectiveUpdates.active_offers = updates.active_offers;
+    } else if (currentOffers.length > 0) {
       effectiveUpdates.active_offers = currentOffers.map((o) => {
         if (o.id === 'off_2' || (o.type === 'milestone' && (o.stamps_needed || 6) >= (existing?.reward_rule?.stamps_needed || 6))) {
           return {
@@ -918,7 +927,7 @@ class RevaDatabase {
         }
         return {
           ...o,
-          min_order: minOrder,
+          min_order: o.min_order || minOrder,
         };
       });
     }

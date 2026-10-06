@@ -381,7 +381,7 @@ export default function SettingsSection({
 
   const currentThemePreset = business?.theme_config?.preset || business?.reward_rule?.theme_config?.preset || 'warm_latte';
   const currentStampIcon = business?.theme_config?.stamp_icon || business?.reward_rule?.theme_config?.stamp_icon || 'coffee';
-  const fullAddress = [address, area, city].filter(Boolean).join(', ') || 'Bhoida pada vasai east';
+  const fullAddress = [address, area, city].filter(Boolean).join(', ') || 'Not set';
 
   return (
     <div className="max-w-xl mx-auto space-y-5 animate-in fade-in duration-200">
@@ -747,7 +747,7 @@ export default function SettingsSection({
                     type="tel"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    placeholder="e.g. +91 7219487063"
+                    placeholder="e.g. +91 98765 43210"
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#0F172A]"
                   />
                 </div>
@@ -759,7 +759,7 @@ export default function SettingsSection({
                     type="text"
                     value={city}
                     onChange={(e) => setCity(e.target.value)}
-                    placeholder="e.g. Vasai East"
+                    placeholder="e.g. Indiranagar"
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#0F172A]"
                   />
                 </div>
@@ -773,7 +773,7 @@ export default function SettingsSection({
                   type="text"
                   value={address}
                   onChange={(e) => setAddress(e.target.value)}
-                  placeholder="e.g. Bhoida pada, vasai east"
+                  placeholder="e.g. 104 MG Road, Indiranagar"
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#0F172A]"
                 />
               </div>
