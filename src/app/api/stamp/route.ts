@@ -75,8 +75,8 @@ export async function POST(req: NextRequest) {
 
     const isQrScan = source === 'qr_scan';
 
-    // 24-Hour Cooldown Verification for Self-Serve QR Scans (Checked FIRST)
-    const lastClaimIso = currentMem.last_qr_stamp_at || (isQrScan ? currentMem.last_visit_at : null);
+    // 24-Hour Cooldown Verification for Self-Serve QR Scans (Checked ONLY against previous self-serve QR stamps)
+    const lastClaimIso = currentMem.last_qr_stamp_at;
     if (isQrScan && lastClaimIso) {
       const lastClaimTime = new Date(lastClaimIso).getTime();
       const now = Date.now();

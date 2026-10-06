@@ -79,6 +79,15 @@ export default function CustomerWalletCardPage(props: {
 
   // Bottom Navigation State: 'card' (Stamp Card Home) | 'offers' | 'details' | 'visits'
   const [activeTab, setActiveTab] = useState<'card' | 'offers' | 'details' | 'visits'>('card');
+  const [rewardSubTab, setRewardSubTab] = useState<'to-claim' | 'history'>('to-claim');
+  const [claimedRewards, setClaimedRewards] = useState<Array<{
+    id: string;
+    businessName: string;
+    businessSlug: string;
+    rewardTitle: string;
+    claimedAt: string;
+    voucherCode: string;
+  }>>([]);
 
   // Stamp & Cooldown Interaction State
   const [stampAnimating, setStampAnimating] = useState(false);
@@ -143,6 +152,16 @@ export default function CustomerWalletCardPage(props: {
         if (globalName && globalName !== 'Valued Guest' && globalName !== 'Aarav Sharma' && !isTestMode) {
           setNameInput(globalName);
         }
+
+        try {
+          const savedClaimed = localStorage.getItem('reva_claimed_rewards');
+          if (savedClaimed) {
+            const parsed = JSON.parse(savedClaimed);
+            if (Array.isArray(parsed)) {
+              setClaimedRewards(parsed.filter((c: any) => c.businessSlug === slug || !c.businessSlug));
+            }
+          }
+        } catch {}
 
         const bizRes = await fetch(`/api/businesses/${slug}`, {
           cache: 'no-store',
@@ -505,14 +524,16 @@ export default function CustomerWalletCardPage(props: {
           }
           const savedClaimed = localStorage.getItem('reva_claimed_rewards');
           const claimedList = savedClaimed ? JSON.parse(savedClaimed) : [];
-          claimedList.unshift({
+          const newClaimItem = {
             id: `claim_${Date.now()}`,
             businessName: business.name,
             businessSlug: slug,
             rewardTitle,
             claimedAt: 'Just now',
             voucherCode: code,
-          });
+          };
+          claimedList.unshift(newClaimItem);
+          setClaimedRewards((prev) => [newClaimItem, ...prev]);
           localStorage.setItem('reva_claimed_rewards', JSON.stringify(claimedList));
         } catch {
           // ignore
@@ -1121,14 +1142,14 @@ export default function CustomerWalletCardPage(props: {
             )}
 
             {/* ========================================================================= */}
-            {/* TAB 2: 🎁 OFFERS & SPECIAL TREATS (Milestone-based Rewards) */}
+            {/* TAB 2: 🎁 MY REWARDS (To Claim & Claimed History with Milestone Progress) */}
             {/* ========================================================================= */}
             {activeTab === 'offers' && (
               <div className="space-y-4 animate-stamp text-left">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="font-display font-bold text-base text-[#0F172A]">Milestone Rewards</h3>
-                    <p className="text-xs text-slate-400">Collect stamps to unlock each tier at {business.name}</p>
+                    <h3 className="font-display font-bold text-lg text-[#0F172A]">My Rewards</h3>
+                    <p className="text-xs text-slate-400">Earn treats and view voucher history for {business.name}</p>
                   </div>
                   <span
                     className="text-[11px] font-mono font-bold text-white px-2.5 py-1 rounded-full shadow-2xs"
@@ -1138,129 +1159,204 @@ export default function CustomerWalletCardPage(props: {
                   </span>
                 </div>
 
-                {/* Milestone Offer Cards List */}
-                <div className="space-y-3">
-                  {activeOffers.map((offer) => {
-                    const reqStamps = offer.stamps_needed || stampsNeeded;
-                    const isUnlocked = currentStamps >= reqStamps;
-                    const progressPercent = Math.min(100, Math.round((currentStamps / reqStamps) * 100));
-                    const remaining = Math.max(0, reqStamps - currentStamps);
+                {/* Sub Tabs: To Claim vs History */}
+                <div className="p-1 rounded-2xl grid grid-cols-2 gap-1 bg-slate-100 border border-slate-200/80">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      sound.playClick();
+                      setRewardSubTab('to-claim');
+                    }}
+                    className={`py-2 rounded-xl text-xs font-display font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                      rewardSubTab === 'to-claim'
+                        ? 'bg-white text-slate-900 shadow-xs'
+                        : 'text-slate-500 hover:text-slate-900'
+                    }`}
+                  >
+                    <span>To Claim</span>
+                    <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-500 text-white font-bold">
+                      {activeOffers.filter((o) => currentStamps >= (o.stamps_needed || stampsNeeded)).length}
+                    </span>
+                  </button>
 
-                    return (
-                      <div
-                        key={offer.id}
-                        className={`rounded-2xl p-4.5 border transition-all card-soft-shadow ${
-                          isUnlocked
-                            ? 'bg-gradient-to-br from-emerald-50/80 via-white to-emerald-50/30 border-emerald-300 ring-1 ring-emerald-400/20'
-                            : 'bg-white border-slate-200/80 hover:border-slate-300'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between gap-3 mb-2.5">
-                          <div className="flex items-center gap-2">
-                            <span
-                              className="text-[11px] font-mono font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full text-white shadow-2xs"
-                              style={{ backgroundColor: isUnlocked ? '#059669' : business.brand_color || '#0F172A' }}
-                            >
-                              🎯 At {reqStamps} Stamps
-                            </span>
-                            {offer.min_order && (
-                              <span className="text-[10px] font-mono text-slate-400">
-                                Min. ₹{offer.min_order}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      sound.playClick();
+                      setRewardSubTab('history');
+                    }}
+                    className={`py-2 rounded-xl text-xs font-display font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                      rewardSubTab === 'history'
+                        ? 'bg-white text-slate-900 shadow-xs'
+                        : 'text-slate-500 hover:text-slate-900'
+                    }`}
+                  >
+                    <span>History</span>
+                    <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-200 text-slate-700">
+                      {claimedRewards.length}
+                    </span>
+                  </button>
+                </div>
+
+                {/* SUB-TAB 1: TO CLAIM */}
+                {rewardSubTab === 'to-claim' && (
+                  <div className="space-y-3">
+                    {/* Milestone Offer Cards List */}
+                    {activeOffers.map((offer) => {
+                      const reqStamps = offer.stamps_needed || stampsNeeded;
+                      const isUnlocked = currentStamps >= reqStamps;
+                      const progressPercent = Math.min(100, Math.round((currentStamps / reqStamps) * 100));
+                      const remaining = Math.max(0, reqStamps - currentStamps);
+
+                      return (
+                        <div
+                          key={offer.id}
+                          className={`rounded-2xl p-4.5 border transition-all card-soft-shadow ${
+                            isUnlocked
+                              ? 'bg-gradient-to-br from-emerald-50/80 via-white to-emerald-50/30 border-emerald-300 ring-1 ring-emerald-400/20'
+                              : 'bg-white border-slate-200/80 hover:border-slate-300'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-3 mb-2.5">
+                            <div className="flex items-center gap-2">
+                              <span
+                                className="text-[11px] font-mono font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full text-white shadow-2xs"
+                                style={{ backgroundColor: isUnlocked ? '#059669' : business.brand_color || '#0F172A' }}
+                              >
+                                🎯 At {reqStamps} Stamps
+                              </span>
+                              {offer.min_order && (
+                                <span className="text-[10px] font-mono text-slate-400">
+                                  Min. ₹{offer.min_order}
+                                </span>
+                              )}
+                            </div>
+
+                            {isUnlocked ? (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-mono font-bold text-emerald-700 bg-emerald-100/90 px-2.5 py-0.5 rounded-full">
+                                <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                <span>UNLOCKED</span>
+                              </span>
+                            ) : (
+                              <span className="text-[11px] font-mono font-semibold text-slate-500">
+                                {remaining} more {remaining === 1 ? 'stamp' : 'stamps'} needed
                               </span>
                             )}
                           </div>
 
-                          {isUnlocked ? (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-mono font-bold text-emerald-700 bg-emerald-100/90 px-2.5 py-0.5 rounded-full">
-                              <Check className="w-3.5 h-3.5 stroke-[3]" />
-                              <span>UNLOCKED</span>
-                            </span>
-                          ) : (
-                            <span className="text-[11px] font-mono font-semibold text-slate-500">
-                              {remaining} more {remaining === 1 ? 'stamp' : 'stamps'} needed
-                            </span>
-                          )}
-                        </div>
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 border ${
+                                isUnlocked
+                                  ? 'bg-white border-emerald-200 text-emerald-600 shadow-2xs'
+                                  : 'bg-slate-50 border-slate-200 text-slate-700'
+                              }`}>
+                                {offer.icon === 'flame' ? (
+                                  <Flame className="w-5 h-5 text-amber-500 fill-amber-400/20" />
+                                ) : offer.icon === 'star' ? (
+                                  <Star className="w-5 h-5 text-emerald-600 fill-emerald-500/20" />
+                                ) : offer.icon === 'coffee' ? (
+                                  <Coffee className="w-5 h-5 text-slate-700" />
+                                ) : (
+                                  <Gift className="w-5 h-5 text-purple-600" />
+                                )}
+                              </div>
 
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-3 min-w-0">
-                            <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 border ${
-                              isUnlocked
-                                ? 'bg-white border-emerald-200 text-emerald-600 shadow-2xs'
-                                : 'bg-slate-50 border-slate-200 text-slate-700'
-                            }`}>
-                              {offer.icon === 'flame' ? (
-                                <Flame className="w-5 h-5 text-amber-500 fill-amber-400/20" />
-                              ) : offer.icon === 'star' ? (
-                                <Star className="w-5 h-5 text-emerald-600 fill-emerald-500/20" />
-                              ) : offer.icon === 'coffee' ? (
-                                <Coffee className="w-5 h-5 text-slate-700" />
+                              <div className="min-w-0">
+                                <h4 className="font-display font-bold text-sm text-[#0F172A] truncate">
+                                  {offer.title}
+                                </h4>
+                                <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                                  {offer.desc || `Unlocked when customer reaches ${reqStamps} stamps on pass`}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="shrink-0">
+                              {isUnlocked ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedRedeemOffer({
+                                      title: offer.title,
+                                      desc: offer.desc,
+                                      stampsNeeded: reqStamps,
+                                    });
+                                    setShowRedeemModal(true);
+                                    sound.playClick();
+                                  }}
+                                  className="px-4 py-2 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-display font-bold text-xs shadow-md flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all"
+                                >
+                                  <Gift className="w-3.5 h-3.5" />
+                                  <span>Claim</span>
+                                </button>
                               ) : (
-                                <Gift className="w-5 h-5 text-purple-600" />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveTab('card');
+                                    sound.playClick();
+                                  }}
+                                  className="px-3.5 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-mono font-bold text-xs transition-colors cursor-pointer"
+                                >
+                                  {currentStamps}/{reqStamps}
+                                </button>
                               )}
                             </div>
+                          </div>
 
-                            <div className="min-w-0">
-                              <h4 className="font-display font-bold text-sm text-[#0F172A] truncate">
-                                {offer.title}
-                              </h4>
-                              <p className="text-[11px] text-slate-500 truncate mt-0.5">
-                                {offer.desc || `Unlocked when customer reaches ${reqStamps} stamps on pass`}
-                              </p>
+                          {/* Progress Bar */}
+                          {!isUnlocked && (
+                            <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center gap-2.5">
+                              <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-amber-500 rounded-full transition-all duration-500"
+                                  style={{ width: `${progressPercent}%` }}
+                                />
+                              </div>
+                              <span className="text-[10px] font-mono font-bold text-slate-400 shrink-0">
+                                {progressPercent}%
+                              </span>
                             </div>
-                          </div>
-
-                          <div className="shrink-0">
-                            {isUnlocked ? (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedRedeemOffer({
-                                    title: offer.title,
-                                    desc: offer.desc,
-                                    stampsNeeded: reqStamps,
-                                  });
-                                  setShowRedeemModal(true);
-                                  sound.playClick();
-                                }}
-                                className="px-4 py-2 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-display font-bold text-xs shadow-md flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all"
-                              >
-                                <Gift className="w-3.5 h-3.5" />
-                                <span>Claim</span>
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setActiveTab('card');
-                                  sound.playClick();
-                                }}
-                                className="px-3.5 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-mono font-bold text-xs transition-colors cursor-pointer"
-                              >
-                                {currentStamps}/{reqStamps}
-                              </button>
-                            )}
-                          </div>
+                          )}
                         </div>
+                      );
+                    })}
+                  </div>
+                )}
 
-                        {/* Progress Bar */}
-                        {!isUnlocked && (
-                          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center gap-2.5">
-                            <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                              <div
-                                className="h-full bg-amber-500 rounded-full transition-all duration-500"
-                                style={{ width: `${progressPercent}%` }}
-                              />
-                            </div>
-                            <span className="text-[10px] font-mono font-bold text-slate-400 shrink-0">
-                              {progressPercent}%
-                            </span>
-                          </div>
-                        )}
+                {/* SUB-TAB 2: HISTORY */}
+                {rewardSubTab === 'history' && (
+                  <div className="space-y-2.5">
+                    {claimedRewards.length === 0 ? (
+                      <div className="bg-white rounded-3xl p-8 text-center space-y-2 border border-slate-100 card-soft-shadow">
+                        <Clock className="w-8 h-8 text-slate-400 mx-auto" />
+                        <div className="font-display font-bold text-sm text-slate-800">No Reward History Yet</div>
+                        <p className="text-xs text-slate-500">Your claimed vouchers and treats will appear here.</p>
                       </div>
-                    );
-                  })}
-                </div>
+                    ) : (
+                      claimedRewards.map((hist) => (
+                        <div
+                          key={hist.id}
+                          className="bg-white rounded-2xl p-3.5 border border-slate-200/80 shadow-2xs flex items-center justify-between"
+                        >
+                          <div className="space-y-0.5">
+                            <div className="text-[10px] font-mono text-slate-400">{hist.businessName}</div>
+                            <h4 className="font-display font-bold text-xs text-slate-900">{hist.rewardTitle}</h4>
+                            <div className="text-[10px] text-slate-400 flex items-center gap-1 font-mono">
+                              <span>Code: {hist.voucherCode}</span>
+                              <span>•</span>
+                              <span>{hist.claimedAt}</span>
+                            </div>
+                          </div>
+                          <span className="text-[10px] font-mono font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md">
+                            REDEEMED
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
               </div>
             )}
 

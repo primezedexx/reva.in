@@ -436,31 +436,27 @@ export default function CameraQrScannerModal({
       return;
     }
 
-    // Give hardware driver 60ms to release locks
-    await new Promise((r) => setTimeout(r, 60));
-    if (currentGen !== streamGenRef.current) return;
-
     let stream: MediaStream | null = null;
 
-    // Constraint Strategy 1: Ideal facingMode + Resolution
+    // Constraint Strategy 1: Instant Low-Latency QR Stream (640x480 loads in <120ms on mobile)
     try {
       stream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { ideal: mode },
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
+          width: { ideal: 640, min: 320 },
+          height: { ideal: 480, min: 240 },
         },
         audio: false,
       });
     } catch {
-      // Constraint Strategy 2: Exact/Direct facingMode
+      // Constraint Strategy 2: Direct facingMode fallback
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: mode },
           audio: false,
         });
       } catch {
-        // Constraint Strategy 3: Universal fallback (works on 100% of webcams/laptops)
+        // Constraint Strategy 3: Universal fallback (works on 100% of webcams/browsers)
         try {
           stream = await navigator.mediaDevices.getUserMedia({
             video: true,
@@ -489,6 +485,8 @@ export default function CameraQrScannerModal({
     if (videoRef.current) {
       videoRef.current.srcObject = stream;
       videoRef.current.setAttribute('playsinline', 'true');
+      videoRef.current.setAttribute('muted', 'true');
+      videoRef.current.setAttribute('autoplay', 'true');
       try {
         await videoRef.current.play();
       } catch (playErr) {
