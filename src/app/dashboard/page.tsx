@@ -326,6 +326,7 @@ function OwnerDashboardContent() {
   const [settingsOfferText, setSettingsOfferText] = useState('');
   const [settingsAvgSpend, setSettingsAvgSpend] = useState(250);
   const [settingsMinOrder, setSettingsMinOrder] = useState(150);
+  const [settingsRewardExpiryDays, setSettingsRewardExpiryDays] = useState(60);
   const [settingsGoogleReviewUrl, setSettingsGoogleReviewUrl] = useState('');
   const [settingsInstagramUrl, setSettingsInstagramUrl] = useState('');
   const [settingsAddress, setSettingsAddress] = useState('');
@@ -485,6 +486,7 @@ function OwnerDashboardContent() {
           setSettingsOfferText(active.winback_offer_text || '');
           setSettingsAvgSpend(active.avg_spend_per_visit || 250);
           setSettingsMinOrder(active.reward_rule?.min_order_for_stamp || active.min_order_for_stamp || 150);
+          setSettingsRewardExpiryDays(active.reward_rule?.expiry_days !== undefined ? active.reward_rule.expiry_days : 60);
 
           const milestone = (active.active_offers as any[])?.find((o: any) => (o.stamps_needed || 0) < (active.reward_rule?.stamps_needed || 6));
           if (milestone) {
@@ -1319,6 +1321,7 @@ function OwnerDashboardContent() {
             stamps_needed: stamps,
             reward_title: rewardTitle,
             min_order_for_stamp: minOrder,
+            expiry_days: Number(settingsRewardExpiryDays) >= 0 ? Number(settingsRewardExpiryDays) : 60,
           },
           active_offers: updatedOffers,
           min_order_for_stamp: minOrder,
@@ -3381,17 +3384,25 @@ function OwnerDashboardContent() {
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                      Avg. Spend per Visit (₹)
+                    <label className="block text-[11px] font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                      <span>Reward Expiry (Days)</span>
+                      <span className="text-[10px] font-mono text-amber-700 font-bold">
+                        {settingsRewardExpiryDays > 0 ? `${settingsRewardExpiryDays}d` : 'No Expiry'}
+                      </span>
                     </label>
                     <div className="relative">
-                      <span className="absolute left-3 top-2 text-slate-400 font-bold text-xs font-mono">₹</span>
                       <input
                         type="number"
-                        value={settingsAvgSpend}
-                        onChange={(e) => setSettingsAvgSpend(Number(e.target.value))}
-                        className="w-full pl-7 pr-3 py-2 rounded-xl border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#0F172A] font-mono bg-slate-50/50"
+                        min={0}
+                        max={365}
+                        value={settingsRewardExpiryDays}
+                        onChange={(e) => setSettingsRewardExpiryDays(Math.max(0, Number(e.target.value) || 0))}
+                        placeholder="60 (0 = No expiry)"
+                        className="w-full pl-3 pr-10 py-2 rounded-xl border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#0F172A] font-mono bg-slate-50/50"
                       />
+                      <span className="absolute right-3 top-2 text-slate-400 font-medium text-xs font-mono">
+                        days
+                      </span>
                     </div>
                   </div>
                 </div>
