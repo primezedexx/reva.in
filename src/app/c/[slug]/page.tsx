@@ -77,8 +77,8 @@ export default function CustomerWalletCardPage(props: {
   const [isRegistered, setIsRegistered] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Bottom Navigation State: 'card' (Stamp Card Home) | 'offers' | 'visits'
-  const [activeTab, setActiveTab] = useState<'card' | 'offers' | 'visits'>('card');
+  // Bottom Navigation State: 'card' (Stamp Card Home) | 'offers' | 'details' | 'visits'
+  const [activeTab, setActiveTab] = useState<'card' | 'offers' | 'details' | 'visits'>('card');
 
   // Stamp & Cooldown Interaction State
   const [stampAnimating, setStampAnimating] = useState(false);
@@ -1426,15 +1426,164 @@ export default function CustomerWalletCardPage(props: {
                 </div>
               </div>
             )}
+
+            {/* ========================================================================= */}
+            {/* TAB 4: 📍 STORE DETAILS */}
+            {/* ========================================================================= */}
+            {activeTab === 'details' && (
+              <div className="space-y-4 animate-stamp text-left">
+                <div className="space-y-1">
+                  <h3 className="font-display font-bold text-lg text-[#0F172A]">Store Details</h3>
+                  <p className="text-xs text-slate-500">Location, reviews, and contact details for {business.name}</p>
+                </div>
+
+                {/* Details Card */}
+                {(() => {
+                  const fullAddress = business.address || (business.area ? `${business.area}, ${business.city || 'Bengaluru'}` : 'Indiranagar, Bengaluru');
+                  const storePhone = business.phone || business.reward_rule?.phone || '+91 98765 43210';
+                  const cleanPhone = storePhone.replace(/\D/g, '');
+                  const waNumber = cleanPhone.startsWith('91') ? cleanPhone : cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
+                  const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(`Hi ${business.name}, I'm a Reva loyalty pass member!`)}`;
+                  const googleReview = business.google_review_url || business.reward_rule?.google_review_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(business.name + ' ' + fullAddress)}`;
+                  const instagramUrl = business.instagram_url || business.reward_rule?.instagram_url || `https://instagram.com/${business.slug.replace(/[^a-zA-Z0-9]/g, '')}`;
+                  const mapsUrl = business.maps_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(business.name + ' ' + fullAddress)}`;
+                  const storeBio = business.theme_config?.description || business.reward_rule?.description || business.reward_rule?.reward_desc || 'Specialty artisanal treats, handcrafted beverages, and loyalty rewards on every single visit.';
+
+                  return (
+                    <div className="bg-white rounded-3xl p-5 border border-slate-100 card-soft-shadow space-y-4">
+                      {/* Header */}
+                      <div className="flex items-center gap-3.5 pb-2 border-b border-slate-100">
+                        <div className="w-13 h-13 rounded-2xl overflow-hidden bg-slate-100 shrink-0 border border-slate-200 shadow-2xs">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={business.logo_url || 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=300&auto=format&fit=crop&q=80'}
+                            alt={business.name}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-mono uppercase font-bold text-amber-500">
+                              {business.category || 'Café & Beverage'}
+                            </span>
+                            <span className="text-[10px] font-mono font-bold uppercase text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
+                              Open Today
+                            </span>
+                          </div>
+                          <h2 className="font-display font-bold text-base text-[#0F172A] truncate">
+                            {business.name}
+                          </h2>
+                          <p className="text-xs text-slate-500">
+                            {currentStamps} / {stampsNeeded} Stamps Collected
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* About */}
+                      <div className="space-y-1">
+                        <div className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400">
+                          About {business.name}
+                        </div>
+                        <p className="text-xs text-slate-600 leading-relaxed">
+                          {storeBio}
+                        </p>
+                      </div>
+
+                      {/* Address */}
+                      <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 space-y-2">
+                        <div className="flex items-start gap-2.5">
+                          <MapPin className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                          <div className="min-w-0 flex-1">
+                            <div className="text-xs font-bold text-slate-900 truncate">
+                              Address &amp; Location
+                            </div>
+                            <p className="text-[11px] text-slate-500 leading-snug pt-0.5">
+                              {fullAddress}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="pt-0.5">
+                          <a
+                            href={mapsUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="w-full py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                          >
+                            <Navigation className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>Open in Google Maps / Directions</span>
+                            <ExternalLink className="w-3 h-3 text-slate-400" />
+                          </a>
+                        </div>
+                      </div>
+
+                      {/* Quick Links Grid */}
+                      <div className="grid grid-cols-3 gap-2 pt-0.5">
+                        <a
+                          href={googleReview}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-3 rounded-2xl border border-slate-200 bg-slate-50 hover:bg-slate-100 transition-all flex flex-col items-center justify-center text-center gap-1 group cursor-pointer shadow-2xs active:scale-95"
+                          title="Review on Google"
+                        >
+                          <div className="w-8 h-8 rounded-xl bg-white shadow-2xs flex items-center justify-center">
+                            <svg className="w-4 h-4" viewBox="0 0 24 24">
+                              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                            </svg>
+                          </div>
+                          <span className="text-[11px] font-display font-bold text-slate-800">Google Review</span>
+                          <span className="text-[9px] font-mono text-amber-500 font-semibold">⭐ 5.0 Rating</span>
+                        </a>
+
+                        <a
+                          href={instagramUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-3 rounded-2xl border border-slate-200 bg-slate-50 hover:bg-slate-100 transition-all flex flex-col items-center justify-center text-center gap-1 group cursor-pointer shadow-2xs active:scale-95"
+                          title="Follow on Instagram"
+                        >
+                          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-amber-500 via-rose-500 to-purple-600 text-white shadow-2xs flex items-center justify-center">
+                            <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                              <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" />
+                            </svg>
+                          </div>
+                          <span className="text-[11px] font-display font-bold text-slate-800">Instagram</span>
+                          <span className="text-[9px] font-mono text-slate-500">@{business.slug.slice(0, 10)}</span>
+                        </a>
+
+                        <a
+                          href={waUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-3 rounded-2xl border border-slate-200 bg-slate-50 hover:bg-slate-100 transition-all flex flex-col items-center justify-center text-center gap-1 group cursor-pointer shadow-2xs active:scale-95"
+                          title="Chat on WhatsApp"
+                        >
+                          <div className="w-8 h-8 rounded-xl bg-emerald-500 text-white shadow-2xs flex items-center justify-center">
+                            <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                              <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/>
+                            </svg>
+                          </div>
+                          <span className="text-[11px] font-display font-bold text-slate-800">WhatsApp</span>
+                          <span className="text-[9px] font-mono text-emerald-600 font-semibold">Chat / Call</span>
+                        </a>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
           </>
         )}
       </div>
 
       {/* ========================================================================= */}
-      {/* 3. BOTTOM MOBILE NAVIGATION BAR: [HOME] [REWARDS] [CAMERA SCANNER] [PROFILE] */}
+      {/* 3. BALANCED 5-ITEM MOBILE NAVIGATION BAR: [HOME] [REWARDS] [SCAN QR] [DETAILS] [PROFILE] */}
       {/* ========================================================================= */}
       {isRegistered && (
-        <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-t border-slate-200/80 h-16 px-4 shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
+        <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-t border-slate-200/80 h-16 px-2 sm:px-3 shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
           <div className="max-w-md mx-auto h-full flex items-center justify-between relative">
             {/* 1. Stamp Pass (Home) */}
             <button
@@ -1477,7 +1626,20 @@ export default function CustomerWalletCardPage(props: {
               </button>
             </div>
 
-            {/* 4. Customer Profile & Settings */}
+            {/* 4. Details Tab (Right next to QR and Profile) */}
+            <button
+              onClick={() => {
+                sound.playClick();
+                setActiveTab('details');
+              }}
+              className="flex-1 flex flex-col items-center justify-center gap-1 cursor-pointer transition-colors"
+              style={{ color: activeTab === 'details' ? (business.brand_color || '#0F172A') : '#94A3B8' }}
+            >
+              <Info className={`w-5 h-5 ${activeTab === 'details' ? 'stroke-[2.5]' : ''}`} />
+              <span className={`text-[10px] font-display ${activeTab === 'details' ? 'font-bold' : 'font-medium'}`}>Details</span>
+            </button>
+
+            {/* 5. Customer Profile & Settings */}
             <Link
               href="/c?tab=profile"
               className="flex-1 flex flex-col items-center justify-center gap-1 cursor-pointer transition-colors text-slate-400 hover:text-slate-700"
