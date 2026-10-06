@@ -128,7 +128,18 @@ export default function CustomerWalletCardPage(props: {
             const parsed = JSON.parse(cachedBiz);
             if (parsed?.id) {
               setBusiness(parsed);
-              setLoading(false);
+            }
+          } catch {}
+        }
+
+        // Fast restore cached membership on refresh / revisit (eliminates login flash)
+        const cachedMem = localStorage.getItem(`reva_mem_${slug}`);
+        if (cachedMem && !isTestMode) {
+          try {
+            const parsedMem = JSON.parse(cachedMem);
+            if (parsedMem?.id) {
+              setMembership(parsedMem);
+              setIsRegistered(true);
             }
           } catch {}
         }
@@ -206,12 +217,12 @@ export default function CustomerWalletCardPage(props: {
                 setCustomer(sessData.customer);
                 setMembership(sessData.membership);
                 setIsRegistered(true);
-                if (sessData.customer?.phone) {
-                  try {
-                    localStorage.setItem(`reva_phone_${slug}`, sessData.customer.phone);
-                    localStorage.setItem('reva_customer_phone', sessData.customer.phone);
-                  } catch {}
-                }
+                try {
+                  localStorage.setItem(`reva_mem_${slug}`, JSON.stringify(sessData.membership));
+                  localStorage.setItem(`reva_phone_${slug}`, sessData.customer?.phone || effectivePhone);
+                  localStorage.setItem('reva_customer_phone', sessData.customer?.phone || effectivePhone);
+                  document.cookie = `reva_customer_phone=${encodeURIComponent(sessData.customer?.phone || effectivePhone)}; path=/; max-age=31536000; SameSite=Lax`;
+                } catch {}
                 if (sessData.customer?.name && sessData.customer.name !== 'Valued Guest' && sessData.customer.name !== 'Aarav Sharma') {
                   try {
                     localStorage.setItem('reva_customer_name', sessData.customer.name);
@@ -318,6 +329,7 @@ export default function CustomerWalletCardPage(props: {
         setCustomer(data.customer);
         setMembership(data.membership);
         setIsRegistered(true);
+        localStorage.setItem(`reva_mem_${slug}`, JSON.stringify(data.membership));
         localStorage.setItem(`reva_phone_${slug}`, phone);
         localStorage.setItem('reva_customer_phone', phone);
         try {
@@ -362,6 +374,7 @@ export default function CustomerWalletCardPage(props: {
   function handleSwitchNumber() {
     sound.playClick();
     localStorage.removeItem(`reva_phone_${slug}`);
+    localStorage.removeItem(`reva_mem_${slug}`);
     try {
       localStorage.removeItem('reva_customer_phone');
       localStorage.removeItem('reva_customer_name');
