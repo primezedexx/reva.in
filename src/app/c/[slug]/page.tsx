@@ -6,8 +6,8 @@
 // Bottom Tab Bar: [🏠 Stamp Card] [🎁 Offers] [🕒 Visits]
 // ============================================================================
 
-import React, { useState, useEffect, useMemo, use } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import React, { useState, useEffect, useMemo, Suspense } from 'react';
+import { useSearchParams, useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import confetti from 'canvas-confetti';
 import {
@@ -52,14 +52,12 @@ import { resolvePassBackground, resolvePageBackground } from '@/lib/theme-preset
 import { supabase } from '@/lib/supabase';
 import CameraQrScannerModal from '@/components/CameraQrScannerModal';
 
-export default function CustomerWalletCardPage(props: {
-  params: Promise<{ slug: string }>;
-}) {
-  const params = use(props.params);
+function CustomerWalletCardContent() {
+  const routeParams = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
   
-  let rawSlug = params.slug || '';
+  const rawSlug = (routeParams?.slug as string) || '';
   let decodedSlug = rawSlug;
   try {
     decodedSlug = decodeURIComponent(rawSlug).trim();
@@ -1966,5 +1964,24 @@ export default function CustomerWalletCardPage(props: {
         </div>
       )}
     </main>
+  );
+}
+
+export default function CustomerWalletCardPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-white">
+          <div className="w-8 h-8 flex items-center justify-center text-[#0F172A] animate-spin mb-3">
+            <svg viewBox="0 0 24 24" className="w-8 h-8 fill-none stroke-current stroke-[2.2]">
+              <path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M4.93 19.07L19.07 4.93" />
+            </svg>
+          </div>
+          <p className="text-xs font-mono font-bold uppercase tracking-widest text-slate-400">Loading Loyalty Pass...</p>
+        </div>
+      }
+    >
+      <CustomerWalletCardContent />
+    </Suspense>
   );
 }
