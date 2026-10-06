@@ -592,7 +592,13 @@ function CustomerPortalContent() {
 
       // Sync customer phone pass details from backend (pure customer identity, completely isolated from merchant auth)
       const syncCustomerSession = async () => {
-        const currentPhone = localStorage.getItem('reva_customer_phone') || '';
+        let cookiePhone = '';
+        if (typeof document !== 'undefined') {
+          const match = document.cookie.match(/(?:^|;\s*)reva_customer_phone=([^;]+)/);
+          if (match) cookiePhone = decodeURIComponent(match[1]);
+        }
+
+        const currentPhone = localStorage.getItem('reva_customer_phone') || cookiePhone || '';
         const currentName = localStorage.getItem('reva_customer_name') || '';
         const rawEmail = localStorage.getItem('reva_customer_email') || '';
         const hasRealPhone = currentPhone && currentPhone !== '+91 98765 43210' && currentPhone !== '9876543210' && !currentPhone.includes('@') && currentPhone.replace(/\D/g, '').length >= 10;
@@ -611,6 +617,9 @@ function CustomerPortalContent() {
         if (effectivePhone) {
           setCustomerPhone(effectivePhone);
           localStorage.setItem('reva_customer_phone', effectivePhone);
+          try {
+            document.cookie = `reva_customer_phone=${encodeURIComponent(effectivePhone)}; path=/; max-age=31536000; SameSite=Lax`;
+          } catch {}
         }
         if (effectiveEmail) {
           setCustomerEmail(effectiveEmail);

@@ -124,8 +124,15 @@ export default function CustomerWalletCardPage(props: {
           } catch {}
         }
 
+        // Read from URL, LocalStorage, or Cookie (for Google Lens / In-App Browser persistence)
+        let cookiePhone = '';
+        if (typeof document !== 'undefined') {
+          const match = document.cookie.match(/(?:^|;\s*)reva_customer_phone=([^;]+)/);
+          if (match) cookiePhone = decodeURIComponent(match[1]);
+        }
+
         const savedStorePhone = !isTestMode ? (prefillPhone || localStorage.getItem(`reva_phone_${slug}`)) : '';
-        const globalPhone = !isTestMode ? localStorage.getItem('reva_customer_phone') : '';
+        const globalPhone = !isTestMode ? (localStorage.getItem('reva_customer_phone') || cookiePhone) : '';
         const globalName = !isTestMode ? localStorage.getItem('reva_customer_name') : '';
         const globalEmail = !isTestMode ? localStorage.getItem('reva_customer_email') : '';
         const phoneToPrefill = savedStorePhone || (globalPhone && !globalPhone.includes('@') && globalPhone.replace(/\D/g, '').length >= 10 ? globalPhone : '');
@@ -294,6 +301,9 @@ export default function CustomerWalletCardPage(props: {
         setIsRegistered(true);
         localStorage.setItem(`reva_phone_${slug}`, phone);
         localStorage.setItem('reva_customer_phone', phone);
+        try {
+          document.cookie = `reva_customer_phone=${encodeURIComponent(phone)}; path=/; max-age=31536000; SameSite=Lax`;
+        } catch {}
         if (data.customer?.name && data.customer.name !== 'Valued Guest') {
           localStorage.setItem('reva_customer_name', data.customer.name);
         }
@@ -338,6 +348,7 @@ export default function CustomerWalletCardPage(props: {
       localStorage.removeItem('reva_customer_name');
       localStorage.removeItem('reva_customer_passes');
       localStorage.removeItem('reva_global_phone');
+      document.cookie = 'reva_customer_phone=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
     } catch {}
     setIsRegistered(false);
     setCustomer(null);
