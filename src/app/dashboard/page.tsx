@@ -363,7 +363,7 @@ function OwnerDashboardContent() {
 
   // Create Reward / Offer Modal State (Set: "At X Stamps -> Get Y Reward")
   const [showCreateOfferModal, setShowCreateOfferModal] = useState(false);
-  const [newOfferStamps, setNewOfferStamps] = useState(3);
+  const [newOfferStamps, setNewOfferStamps] = useState<number | ''>(3);
   const [newOfferTitle, setNewOfferTitle] = useState('');
   const [newOfferBadge, setNewOfferBadge] = useState('3 Stamps Milestone');
   const [newOfferDesc, setNewOfferDesc] = useState('');
@@ -374,7 +374,7 @@ function OwnerDashboardContent() {
   // Edit Milestone Reward Modal State
   const [showEditOfferModal, setShowEditOfferModal] = useState(false);
   const [editingOffer, setEditingOffer] = useState<StoreOffer | null>(null);
-  const [editOfferStamps, setEditOfferStamps] = useState(3);
+  const [editOfferStamps, setEditOfferStamps] = useState<number | ''>(3);
   const [editOfferTitle, setEditOfferTitle] = useState('');
   const [editOfferBadge, setEditOfferBadge] = useState('');
   const [editOfferDesc, setEditOfferDesc] = useState('');
@@ -1415,16 +1415,17 @@ function OwnerDashboardContent() {
       setIsCreatingOffer(true);
       sound.playStampPop();
 
-      const stamps = Number(newOfferStamps) || 3;
+      const rawStamps = Number(newOfferStamps) || 1;
+      const stamps = Math.min(12, Math.max(1, rawStamps));
       const expiry = Number(newOfferExpiryDays) > 0 ? Number(newOfferExpiryDays) : undefined;
       const newOffer: StoreOffer = {
         id: 'off_' + Math.random().toString(36).substring(2, 9),
         title: newOfferTitle.trim(),
         stamps_needed: stamps,
-        badge: newOfferBadge.trim() || `${stamps} Stamps Milestone`,
+        badge: `${stamps} Stamps Milestone`,
         desc: newOfferDesc.trim() || `Unlocked when customer reaches ${stamps} stamps on their digital pass`,
         type: 'milestone',
-        icon: newOfferIcon,
+        icon: 'gift',
         expiry_days: expiry,
         min_order: selectedBusiness.min_order_for_stamp || 150,
       };
@@ -1448,7 +1449,7 @@ function OwnerDashboardContent() {
         setNewOfferTitle('');
         setNewOfferDesc('');
         setNewOfferStamps(3);
-        setNewOfferBadge('3 Stamps Reward');
+        setNewOfferBadge('3 Stamps Milestone');
         setNewOfferExpiryDays('30');
         await loadDashboardData(selectedBusiness.id);
       }
@@ -1462,7 +1463,7 @@ function OwnerDashboardContent() {
   function handleOpenEditOfferModal(offer: StoreOffer) {
     setEditingOffer(offer);
     setEditOfferTitle(offer.title || '');
-    setEditOfferStamps(offer.stamps_needed || 3);
+    setEditOfferStamps(Math.min(12, Math.max(1, offer.stamps_needed || 3)));
     setEditOfferBadge(offer.badge || `${offer.stamps_needed || 3} Stamps Milestone`);
     setEditOfferDesc(offer.desc || '');
     setEditOfferIcon((offer.icon as any) || 'gift');
@@ -1476,7 +1477,8 @@ function OwnerDashboardContent() {
     try {
       setIsEditingOffer(true);
       sound.playClick();
-      const stamps = Number(editOfferStamps) || 3;
+      const rawStamps = Number(editOfferStamps) || 1;
+      const stamps = Math.min(12, Math.max(1, rawStamps));
       const expiry = Number(editOfferExpiryDays) > 0 ? Number(editOfferExpiryDays) : undefined;
       const existingOffers = selectedBusiness.active_offers || [];
       const updatedOffers = existingOffers.map((o) => {
@@ -1485,9 +1487,9 @@ function OwnerDashboardContent() {
             ...o,
             title: editOfferTitle.trim(),
             stamps_needed: stamps,
-            badge: editOfferBadge.trim() || `${stamps} Stamps Milestone`,
+            badge: `${stamps} Stamps Milestone`,
             desc: editOfferDesc.trim() || `Unlocked when customer reaches ${stamps} stamps on their digital pass`,
-            icon: editOfferIcon,
+            icon: o.icon || 'gift',
             expiry_days: expiry,
           };
         }
@@ -2937,9 +2939,6 @@ function OwnerDashboardContent() {
                           <label className="block text-xs font-semibold text-slate-700">
                             Order Bill Amount (₹)
                           </label>
-                          <span className="text-[11px] text-slate-400 font-mono">
-                            Min. order: ₹{selectedBusiness?.reward_rule.min_order_for_stamp || 150}
-                          </span>
                         </div>
                         <div className="relative">
                           <span className="absolute left-4 top-2.5 text-slate-400 font-bold text-sm">₹</span>
@@ -3161,13 +3160,10 @@ function OwnerDashboardContent() {
 
                     {/* Footer Helper */}
                     <div className="mt-3.5 pt-2.5 border-t border-white/15 flex items-center justify-between text-xs text-white/90">
-                      <div className="flex items-center gap-1.5 font-medium truncate mr-2">
+                      <div className="flex items-center gap-1.5 font-medium truncate">
                         <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
                         <span className="truncate">Grand Prize: <b>{grandTitle}</b> (Unlocked at {totalStamps} stamps)</span>
                       </div>
-                      <span className="text-[11px] font-mono text-white/70 shrink-0">
-                        ₹{minBill}+ per stamp
-                      </span>
                     </div>
                   </div>
                 </div>
@@ -3244,9 +3240,6 @@ function OwnerDashboardContent() {
                         <div className="flex flex-wrap items-center gap-2 pt-0.5 text-[10px] font-mono text-slate-500">
                           <span className="px-2 py-0.5 rounded-md bg-white border border-slate-200">
                             Stamps: {totalStamps}
-                          </span>
-                          <span className="px-2 py-0.5 rounded-md bg-white border border-slate-200">
-                            Min Order: ₹{minBill}+
                           </span>
                         </div>
                       </div>
@@ -6177,24 +6170,32 @@ function OwnerDashboardContent() {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Unlock at Stamp Slot *
-                    </label>
-                    <select
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-semibold text-slate-700">
+                        Unlock at Stamp Slot *
+                      </label>
+                      <span className="text-[10px] text-slate-400 font-mono">Max 12</span>
+                    </div>
+                    <input
+                      type="number"
+                      min={1}
+                      max={12}
                       value={newOfferStamps}
                       onChange={(e) => {
-                        const val = Number(e.target.value);
-                        setNewOfferStamps(val);
-                        setNewOfferBadge(`${val} Stamps Milestone`);
+                        const raw = e.target.value;
+                        if (raw === '') {
+                          setNewOfferStamps('');
+                          return;
+                        }
+                        const num = Number(raw);
+                        const clamped = Math.min(12, Math.max(1, num));
+                        setNewOfferStamps(clamped);
+                        setNewOfferBadge(`${clamped} Stamps Milestone`);
                       }}
-                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#0F172A] bg-slate-50/50"
-                    >
-                      {Array.from({ length: Math.max(1, (settingsStamps || selectedBusiness?.reward_rule?.stamps_needed || 6) - 1) }).map((_, i) => (
-                        <option key={i + 1} value={i + 1}>
-                          Stamp #{i + 1} ({i + 1} of {settingsStamps || 6})
-                        </option>
-                      ))}
-                    </select>
+                      placeholder="e.g. 5 (Max 12)"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#0F172A] font-mono bg-slate-50/50"
+                      required
+                    />
                   </div>
 
                   <div>
@@ -6212,47 +6213,6 @@ function OwnerDashboardContent() {
                         className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#0F172A] font-mono bg-slate-50/50"
                       />
                     </div>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Badge Text (Shown on Pass)
-                  </label>
-                  <input
-                    type="text"
-                    value={newOfferBadge}
-                    onChange={(e) => setNewOfferBadge(e.target.value)}
-                    placeholder="e.g. 3 Stamps Milestone"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#0F172A]"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                    Select Milestone Icon
-                  </label>
-                  <div className="grid grid-cols-6 gap-2">
-                    {(['gift', 'flame', 'star', 'coffee', 'sparkles', 'tag'] as const).map((ico) => (
-                      <button
-                        key={ico}
-                        type="button"
-                        onClick={() => setNewOfferIcon(ico)}
-                        className={`p-2.5 rounded-xl border flex flex-col items-center justify-center transition-all cursor-pointer ${
-                          newOfferIcon === ico
-                            ? 'border-[#0F172A] bg-[#0F172A] text-white shadow-2xs scale-105'
-                            : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
-                        }`}
-                      >
-                        {ico === 'gift' && <Gift className="w-4 h-4" />}
-                        {ico === 'flame' && <Flame className="w-4 h-4" />}
-                        {ico === 'star' && <Star className="w-4 h-4" />}
-                        {ico === 'coffee' && <Coffee className="w-4 h-4" />}
-                        {ico === 'sparkles' && <Sparkles className="w-4 h-4" />}
-                        {ico === 'tag' && <Tag className="w-4 h-4" />}
-                        <span className="text-[9px] capitalize mt-1">{ico}</span>
-                      </button>
-                    ))}
                   </div>
                 </div>
 
@@ -6343,24 +6303,32 @@ function OwnerDashboardContent() {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Unlock at Stamp Slot *
-                    </label>
-                    <select
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-semibold text-slate-700">
+                        Unlock at Stamp Slot *
+                      </label>
+                      <span className="text-[10px] text-slate-400 font-mono">Max 12</span>
+                    </div>
+                    <input
+                      type="number"
+                      min={1}
+                      max={12}
                       value={editOfferStamps}
                       onChange={(e) => {
-                        const val = Number(e.target.value);
-                        setEditOfferStamps(val);
-                        setEditOfferBadge(`${val} Stamps Milestone`);
+                        const raw = e.target.value;
+                        if (raw === '') {
+                          setEditOfferStamps('');
+                          return;
+                        }
+                        const num = Number(raw);
+                        const clamped = Math.min(12, Math.max(1, num));
+                        setEditOfferStamps(clamped);
+                        setEditOfferBadge(`${clamped} Stamps Milestone`);
                       }}
-                      className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#0F172A] bg-slate-50/50"
-                    >
-                      {Array.from({ length: Math.max(1, (settingsStamps || selectedBusiness?.reward_rule?.stamps_needed || 6) - 1) }).map((_, i) => (
-                        <option key={i + 1} value={i + 1}>
-                          Stamp #{i + 1} ({i + 1} of {settingsStamps || 6})
-                        </option>
-                      ))}
-                    </select>
+                      placeholder="e.g. 5 (Max 12)"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#0F172A] font-mono bg-slate-50/50"
+                      required
+                    />
                   </div>
 
                   <div>
@@ -6378,47 +6346,6 @@ function OwnerDashboardContent() {
                         className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#0F172A] font-mono bg-slate-50/50"
                       />
                     </div>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Badge Text (Shown on Pass)
-                  </label>
-                  <input
-                    type="text"
-                    value={editOfferBadge}
-                    onChange={(e) => setEditOfferBadge(e.target.value)}
-                    placeholder="e.g. 3 Stamps Milestone"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#0F172A]"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                    Select Milestone Icon
-                  </label>
-                  <div className="grid grid-cols-6 gap-2">
-                    {(['gift', 'flame', 'star', 'coffee', 'sparkles', 'tag'] as const).map((ico) => (
-                      <button
-                        key={ico}
-                        type="button"
-                        onClick={() => setEditOfferIcon(ico)}
-                        className={`p-2.5 rounded-xl border flex flex-col items-center justify-center transition-all cursor-pointer ${
-                          editOfferIcon === ico
-                            ? 'border-[#0F172A] bg-[#0F172A] text-white shadow-2xs scale-105'
-                            : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
-                        }`}
-                      >
-                        {ico === 'gift' && <Gift className="w-4 h-4" />}
-                        {ico === 'flame' && <Flame className="w-4 h-4" />}
-                        {ico === 'star' && <Star className="w-4 h-4" />}
-                        {ico === 'coffee' && <Coffee className="w-4 h-4" />}
-                        {ico === 'sparkles' && <Sparkles className="w-4 h-4" />}
-                        {ico === 'tag' && <Tag className="w-4 h-4" />}
-                        <span className="text-[9px] capitalize mt-1">{ico}</span>
-                      </button>
-                    ))}
                   </div>
                 </div>
 

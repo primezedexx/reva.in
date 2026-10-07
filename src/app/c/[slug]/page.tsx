@@ -1226,17 +1226,6 @@ function CustomerWalletCardContent() {
                   </button>
                 )}
 
-                {/* Minimum Bill Rule Badge */}
-                <div className="bg-slate-100/80 border border-slate-200/80 rounded-2xl py-2 px-3.5 flex items-center justify-between text-xs text-slate-700">
-                  <div className="flex items-center gap-2 font-medium">
-                    <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-                    <span>
-                      Earn <b>1 Stamp</b> on every order of <b>₹{business.reward_rule?.min_order_for_stamp || business.min_order_for_stamp || 150}+</b>
-                    </span>
-                  </div>
-                  <span className="text-[10px] font-mono text-slate-400 uppercase font-bold">Counter Rule</span>
-                </div>
-
                 {/* Grand Reward Expiry / Stamp Validity Badge */}
                 {Boolean(business.reward_rule?.expiry_days && business.reward_rule.expiry_days > 0) && (() => {
                   const grandExp = getOfferExpiryInfo({
