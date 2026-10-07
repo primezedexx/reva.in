@@ -278,10 +278,16 @@ function CustomerWalletCardContent() {
           return;
         }
 
-        // Fast re-sync status of any existing claimed voucher codes
+        // Fast re-sync status of any existing claimed voucher codes (cache-busted)
         if (localVoucherCodes.length > 0) {
           try {
-            const codesRes = await fetch(`/api/reward/redeem?codes=${encodeURIComponent(localVoucherCodes.join(','))}`);
+            const codesRes = await fetch(`/api/reward/redeem?codes=${encodeURIComponent(localVoucherCodes.join(','))}&_t=${Date.now()}`, {
+              cache: 'no-store',
+              headers: {
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                Pragma: 'no-cache',
+              },
+            });
             if (codesRes.ok) {
               const codesData = await codesRes.json();
               if (codesData.success && Array.isArray(codesData.claims) && isMounted) {
@@ -307,13 +313,19 @@ function CustomerWalletCardContent() {
           try {
             const sessionRes = await fetch('/api/customer/session', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              cache: 'no-store',
+              headers: {
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                Pragma: 'no-cache',
+              },
               body: JSON.stringify({
                 businessSlug: slug,
                 phone: effectivePhone || undefined,
                 email: authEmail || undefined,
                 name: globalName && globalName !== 'Valued Guest' && globalName !== 'Aarav Sharma' ? globalName : undefined,
                 voucherCodes: localVoucherCodes,
+                _t: Date.now(),
               }),
             });
             if (sessionRes.ok) {
@@ -373,8 +385,6 @@ function CustomerWalletCardContent() {
 
   // 2. Real-Time Live Sync: Polling for Cashier Stamp Punches & Store Customization & Reward Redemption Status
   useEffect(() => {
-    if (!isRegistered || !customer || !business) return;
-
     const interval = setInterval(async () => {
       try {
         let currentVoucherCodes: string[] = [];
@@ -386,64 +396,106 @@ function CustomerWalletCardContent() {
           }
         } catch {}
 
-        const res = await fetch('/api/customer/session', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-          },
-          body: JSON.stringify({
-            businessSlug: slug,
-            phone: customer.phone,
-            voucherCodes: currentVoucherCodes,
-          }),
-        });
-        const data = await res.json();
-        if (data.success) {
-          // Sync any store customization updates live
-          if (data.business) {
-            setBusiness(data.business);
-          }
-          // Sync live reward verification status (changes PENDING -> REDEEMED instantly without reload)
-          if (data.claimedRewards && Array.isArray(data.claimedRewards)) {
-            syncClaimedRewardsFromServer(
-              data.claimedRewards,
-              slug,
-              rawSlug,
-              business.name,
-              setClaimedRewards
-            );
-          }
-          if (data.membership) {
-            // Check if stamps were incremented by cashier behind the counter
-            setMembership((prev) => {
-              if (prev && (data.membership.stamps > prev.stamps || data.membership.total_visits > prev.total_visits)) {
-                if (data.membership.stamps > prev.stamps) {
-                  sound.playStampPop();
-                  setStampAnimating(true);
-                  setTimeout(() => setStampAnimating(false), 500);
-
-                  if (data.membership.stamps >= (data.business?.reward_rule?.stamps_needed || business.reward_rule?.stamps_needed || 6)) {
-                    sound.playRewardFanfare();
-                    confetti({
-                      particleCount: 120,
-                      spread: 80,
-                      origin: { y: 0.6 },
-                    });
-                  }
+        if (isRegistered && customer && business) {
+          const res = await fetch('/api/customer/session', {
+            method: 'POST',
+            cache: 'no-store',
+            headers: {
+              'Content-Type': 'application/json',
+              'Cache-Control': 'no-cache, no-store, must-revalidate',
+              Pragma: 'no-cache',
+            },
+            body: JSON.stringify({
+              businessSlug: slug,
+              phone: customer.phone,
+              voucherCodes: currentVoucherCodes,
+              _t: Date.now(),
+            }),
+          });
+          const data = await res.json();
+          if (data.success) {
+            if (data.business) {
+              setBusiness(data.business);
+            }
+            if (data.claimedRewards && Array.isArray(data.claimedRewards)) {
+              syncClaimedRewardsFromServer(
+                data.claimedRewards,
+                slug,
+                rawSlug,
+                business.name,
+                setClaimedRewards
+              );
+              if (latestClaimedVoucher) {
+                const updated = data.claimedRewards.find(
+                  (c: any) => (c.voucher_code || c.voucherCode) === latestClaimedVoucher.code
+                );
+                if (updated && updated.status === 'REDEEMED' && latestClaimedVoucher.status !== 'REDEEMED') {
+                  setLatestClaimedVoucher((prev) => (prev ? { ...prev, status: 'REDEEMED' } : null));
                 }
               }
-              return data.membership;
-            });
+            }
+            if (data.membership) {
+              setMembership((prev) => {
+                if (prev && (data.membership.stamps > prev.stamps || data.membership.total_visits > prev.total_visits)) {
+                  if (data.membership.stamps > prev.stamps) {
+                    sound.playStampPop();
+                    setStampAnimating(true);
+                    setTimeout(() => setStampAnimating(false), 500);
+
+                    if (data.membership.stamps >= (data.business?.reward_rule?.stamps_needed || business.reward_rule?.stamps_needed || 6)) {
+                      sound.playRewardFanfare();
+                      confetti({
+                        particleCount: 120,
+                        spread: 80,
+                        origin: { y: 0.6 },
+                      });
+                    }
+                  }
+                }
+                return data.membership;
+              });
+            }
+          }
+        } else if (currentVoucherCodes.length > 0) {
+          // Even if not logged in, poll voucher status live!
+          const codesRes = await fetch(
+            `/api/reward/redeem?codes=${encodeURIComponent(currentVoucherCodes.join(','))}&_t=${Date.now()}`,
+            {
+              cache: 'no-store',
+              headers: {
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                Pragma: 'no-cache',
+              },
+            }
+          );
+          if (codesRes.ok) {
+            const codesData = await codesRes.json();
+            if (codesData.success && Array.isArray(codesData.claims)) {
+              syncClaimedRewardsFromServer(
+                codesData.claims,
+                slug,
+                rawSlug,
+                business?.name || 'Store',
+                setClaimedRewards
+              );
+              if (latestClaimedVoucher) {
+                const updated = codesData.claims.find(
+                  (c: any) => (c.voucher_code || c.voucherCode) === latestClaimedVoucher.code
+                );
+                if (updated && updated.status === 'REDEEMED' && latestClaimedVoucher.status !== 'REDEEMED') {
+                  setLatestClaimedVoucher((prev) => (prev ? { ...prev, status: 'REDEEMED' } : null));
+                }
+              }
+            }
           }
         }
       } catch (err) {
-        console.error('Live sync poll error', err);
+        // silent polling catch
       }
     }, 1500);
 
     return () => clearInterval(interval);
-  }, [isRegistered, customer, business, slug, rawSlug]);
+  }, [isRegistered, customer, business, slug, rawSlug, latestClaimedVoucher]);
 
   // 2b. Fast re-sync when switching to History tab
   useEffect(() => {
@@ -458,7 +510,13 @@ function CustomerWalletCardContent() {
     } catch {}
 
     if (localVoucherCodes.length > 0) {
-      fetch(`/api/reward/redeem?codes=${encodeURIComponent(localVoucherCodes.join(','))}`)
+      fetch(`/api/reward/redeem?codes=${encodeURIComponent(localVoucherCodes.join(','))}&_t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          Pragma: 'no-cache',
+        },
+      })
         .then((res) => res.json())
         .then((data) => {
           if (data.success && Array.isArray(data.claims)) {
@@ -2305,13 +2363,22 @@ function CustomerWalletCardContent() {
             </div>
 
             <div className="space-y-1">
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300">
-                <Clock className="w-3 h-3 text-amber-700" />
-                <span>Status: PENDING</span>
-              </span>
+              {latestClaimedVoucher.status === 'REDEEMED' ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono font-bold uppercase tracking-wider bg-emerald-100 text-emerald-900 border border-emerald-300 animate-in fade-in">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>✓ REDEEMED</span>
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300">
+                  <Clock className="w-3 h-3 text-amber-700" />
+                  <span>Status: PENDING</span>
+                </span>
+              )}
               <h3 className="text-lg font-display font-bold text-[#0F172A]">{latestClaimedVoucher.title}</h3>
               <p className="text-xs text-slate-500">
-                Show this 6-digit reward code to the cashier at the counter to redeem.
+                {latestClaimedVoucher.status === 'REDEEMED'
+                  ? 'Redemption confirmed! Enjoy your treat.'
+                  : 'Show this 6-digit reward code to the cashier at the counter to redeem.'}
               </p>
             </div>
 

@@ -149,29 +149,45 @@ export async function GET(req: NextRequest) {
     });
     const claimedRewards = Array.from(allClaimsMap.values());
 
-    return NextResponse.json({
-      success: true,
-      customer: {
-        ...primaryCustomer,
-        phone: effectivePhone || primaryCustomer?.phone || '',
-        name: effectiveName,
+    return NextResponse.json(
+      {
+        success: true,
+        customer: {
+          ...primaryCustomer,
+          phone: effectivePhone || primaryCustomer?.phone || '',
+          name: effectiveName,
+          email: effectiveEmail,
+          avatar_url: effectiveAvatar,
+        },
+        passes,
+        claimedRewards,
+        phone: effectivePhone,
         email: effectiveEmail,
         avatar_url: effectiveAvatar,
+        name: effectiveName,
+        auth_provider: primaryCustomer?.auth_provider || (cleanEmail ? 'google' : 'phone_otp'),
+        last_sign_in_at: primaryCustomer?.last_sign_in_at || new Date().toISOString(),
+        registered_at: primaryCustomer?.registered_at || primaryCustomer?.created_at || new Date().toISOString(),
       },
-      passes,
-      claimedRewards,
-      phone: effectivePhone,
-      email: effectiveEmail,
-      avatar_url: effectiveAvatar,
-      name: effectiveName,
-      auth_provider: primaryCustomer?.auth_provider || (cleanEmail ? 'google' : 'phone_otp'),
-      last_sign_in_at: primaryCustomer?.last_sign_in_at || new Date().toISOString(),
-      registered_at: primaryCustomer?.registered_at || primaryCustomer?.created_at || new Date().toISOString(),
-    });
+      {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+          Pragma: 'no-cache',
+          Expires: '0',
+        },
+      }
+    );
   } catch (err: unknown) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Session lookup failed' },
-      { status: 500 }
+      {
+        status: 500,
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+          Pragma: 'no-cache',
+          Expires: '0',
+        },
+      }
     );
   }
 }

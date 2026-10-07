@@ -5,6 +5,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+const NO_CACHE_HEADERS = {
+  'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+  Pragma: 'no-cache',
+  Expires: '0',
+};
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -13,7 +22,7 @@ export async function POST(req: NextRequest) {
     if (!membershipId || !businessId) {
       return NextResponse.json(
         { error: 'Membership ID and Business ID are required' },
-        { status: 400 }
+        { status: 400, headers: NO_CACHE_HEADERS }
       );
     }
 
@@ -28,15 +37,18 @@ export async function POST(req: NextRequest) {
 
     const updatedMem = await db.getMembershipById(membershipId);
 
-    return NextResponse.json({
-      success: true,
-      claim,
-      membership: updatedMem,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        claim,
+        membership: updatedMem,
+      },
+      { headers: NO_CACHE_HEADERS }
+    );
   } catch (err: unknown) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Failed to redeem reward' },
-      { status: 500 }
+      { status: 500, headers: NO_CACHE_HEADERS }
     );
   }
 }
@@ -52,32 +64,38 @@ export async function GET(req: NextRequest) {
     if (code) {
       const claim = await db.getRewardClaimByCode(code, businessId || undefined);
       if (!claim) {
-        return NextResponse.json({ success: false, status: 'INVALID', message: 'Reward code not found' }, { status: 404 });
+        return NextResponse.json(
+          { success: false, status: 'INVALID', message: 'Reward code not found' },
+          { status: 404, headers: NO_CACHE_HEADERS }
+        );
       }
-      return NextResponse.json({ success: true, claim });
+      return NextResponse.json({ success: true, claim }, { headers: NO_CACHE_HEADERS });
     }
 
     if (codes) {
       const parsedCodes = codes.split(',').map((c) => c.trim()).filter(Boolean);
       const claims = await db.getRewardClaimsByCodes(parsedCodes);
-      return NextResponse.json({ success: true, claims });
+      return NextResponse.json({ success: true, claims }, { headers: NO_CACHE_HEADERS });
     }
 
     if (membershipId) {
       const claims = await db.getRewardsClaimedForMembership(membershipId);
-      return NextResponse.json({ success: true, claims });
+      return NextResponse.json({ success: true, claims }, { headers: NO_CACHE_HEADERS });
     }
 
     if (businessId) {
       const claims = await db.getRewardsClaimedForBusiness(businessId);
-      return NextResponse.json({ success: true, claims });
+      return NextResponse.json({ success: true, claims }, { headers: NO_CACHE_HEADERS });
     }
 
-    return NextResponse.json({ error: 'businessId, membershipId, code, or codes required' }, { status: 400 });
+    return NextResponse.json(
+      { error: 'businessId, membershipId, code, or codes required' },
+      { status: 400, headers: NO_CACHE_HEADERS }
+    );
   } catch (err: unknown) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Failed to fetch rewards' },
-      { status: 500 }
+      { status: 500, headers: NO_CACHE_HEADERS }
     );
   }
 }

@@ -663,7 +663,13 @@ function CustomerPortalContent() {
         // Fast re-sync status of any existing claimed voucher codes immediately on load
         if (localCodes.length > 0) {
           try {
-            fetch(`/api/reward/redeem?codes=${encodeURIComponent(localCodes.join(','))}`)
+            fetch(`/api/reward/redeem?codes=${encodeURIComponent(localCodes.join(','))}&_t=${Date.now()}`, {
+              cache: 'no-store',
+              headers: {
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                Pragma: 'no-cache',
+              },
+            })
               .then((r) => r.json())
               .then((d) => {
                 if (d.success && Array.isArray(d.claims)) {
@@ -710,7 +716,13 @@ function CustomerPortalContent() {
 
         if (params.toString()) {
           try {
-            const res = await fetch(`/api/customer/session?${params.toString()}`);
+            const res = await fetch(`/api/customer/session?${params.toString()}&_t=${Date.now()}`, {
+              cache: 'no-store',
+              headers: {
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                Pragma: 'no-cache',
+              },
+            });
             if (res.ok) {
               const sessionData = await res.json();
               if (sessionData.passes && Array.isArray(sessionData.passes)) {
@@ -822,7 +834,13 @@ function CustomerPortalContent() {
     } catch {}
 
     if (localCodes.length > 0) {
-      fetch(`/api/reward/redeem?codes=${encodeURIComponent(localCodes.join(','))}`)
+      fetch(`/api/reward/redeem?codes=${encodeURIComponent(localCodes.join(','))}&_t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          Pragma: 'no-cache',
+        },
+      })
         .then((r) => r.json())
         .then((d) => {
           if (d.success && Array.isArray(d.claims)) {
