@@ -119,6 +119,7 @@ interface ClaimedReward {
   rewardTitle: string;
   claimedAt: string;
   voucherCode: string;
+  status?: 'PENDING' | 'REDEEMED';
 }
 
 function getBusinessLogo(name: string, category?: string, logoUrl?: string): string {
@@ -1368,7 +1369,7 @@ function CustomerPortalContent() {
       origin: { y: 0.6 },
     });
 
-    const code = `REV-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
 
     // 1. Keep the pass in userPasses and deduct needed stamps
     const passMembershipId = (targetPass as any)?.membershipId || (targetPass as any)?.membership_id || (targetPass as any)?.id || targetPass?.passId;
@@ -1407,6 +1408,7 @@ function CustomerPortalContent() {
       rewardTitle: reward.rewardTitle,
       claimedAt: nowTimeStr,
       voucherCode: code,
+      status: 'PENDING',
     };
 
     setClaimedRewards((prev) => {
@@ -1446,6 +1448,8 @@ function CustomerPortalContent() {
             businessId: targetBusId,
             rewardDesc: reward.rewardTitle,
             verifiedBy: 'customer_claim',
+            voucherCode: code,
+            status: 'PENDING',
           }),
         });
         if (res.ok) {
@@ -2735,16 +2739,22 @@ function CustomerPortalContent() {
                         <h4 className="font-display font-bold text-xs leading-tight">
                           {hist.rewardTitle}
                         </h4>
-                        <div className="text-[10px] text-slate-400 flex items-center gap-1 font-mono">
-                          <span>Code: {hist.voucherCode}</span>
+                        <div className="text-[10px] text-slate-500 flex items-center gap-1.5 font-mono">
+                          <span>Code: <b className="text-slate-800 dark:text-slate-200 tracking-wider">{hist.voucherCode}</b></span>
                           <span>•</span>
                           <span>{hist.claimedAt}</span>
                         </div>
                       </div>
 
-                      <span className="text-[10px] font-mono font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md">
-                        REDEEMED
-                      </span>
+                      {hist.status === 'REDEEMED' ? (
+                        <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 px-2 py-0.5 rounded-md">
+                          REDEEMED
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-mono font-bold text-amber-700 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 px-2 py-0.5 rounded-md">
+                          PENDING
+                        </span>
+                      )}
                     </div>
                   ))
                 )}
@@ -3614,28 +3624,29 @@ function CustomerPortalContent() {
             </div>
 
             <div className="space-y-1">
-              <div className="text-[10px] font-mono uppercase font-bold text-emerald-600 dark:text-emerald-400">
-                MERCHANT VERIFICATION
-              </div>
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300">
+                <Clock className="w-3 h-3 text-amber-700" />
+                <span>Status: PENDING</span>
+              </span>
               <h3 className="font-display font-bold text-lg">{redeemingReward.rewardTitle}</h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Show this code to the cashier at {redeemingReward.businessName}
+                Show this 6-digit reward code to the cashier at {redeemingReward.businessName} to redeem.
               </p>
             </div>
 
             {/* Big Voucher Code */}
             <div className="p-4 rounded-2xl bg-slate-100 dark:bg-slate-800 border-2 border-dashed border-slate-300 dark:border-slate-700 space-y-1">
-              <div className="text-[10px] font-mono text-slate-400 uppercase">Redemption Code</div>
-              <div className="font-mono font-black text-2xl tracking-widest text-[#0F172A] dark:text-white">
+              <div className="text-[10px] font-mono text-slate-400 uppercase font-bold tracking-wider">Reward Code</div>
+              <div className="font-mono font-black text-3xl tracking-[0.25em] text-[#0F172A] dark:text-white">
                 {redeemingReward.code}
               </div>
             </div>
 
             <button
-              onClick={handleConfirmRedeemed}
+              onClick={() => setRedeemingReward(null)}
               className="w-full py-3 rounded-2xl bg-[#0F172A] hover:bg-black dark:bg-white dark:hover:bg-slate-100 text-white dark:text-black font-display font-bold text-xs shadow-md transition-all cursor-pointer"
             >
-              Merchant Verified & Redeemed
+              Done (Show at Counter)
             </button>
           </div>
         </div>

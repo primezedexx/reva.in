@@ -77,6 +77,7 @@ import {
   UtensilsCrossed,
   BarChart3,
   LayoutDashboard,
+  XCircle,
 } from 'lucide-react';
 
 const InstagramIcon = ({ className = 'w-4 h-4' }: { className?: string }) => (
@@ -107,6 +108,18 @@ import {
   resolvePageBackground,
 } from '@/lib/theme-presets';
 import { sound } from '@/lib/sound';
+
+function formatRedeemedDate(isoStr?: string) {
+  if (!isoStr) return 'Previously redeemed';
+  try {
+    const d = new Date(isoStr);
+    const datePart = d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    const timePart = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    return `${datePart} • ${timePart}`;
+  } catch {
+    return isoStr;
+  }
+}
 import { supabase, signOutUser } from '@/lib/supabase';
 import { openRazorpayCheckout } from '@/lib/razorpay-client';
 import BusinessSetupModal from '@/components/BusinessSetupModal';
@@ -382,6 +395,16 @@ function OwnerDashboardContent() {
   const [editOfferExpiryDays, setEditOfferExpiryDays] = useState('30');
   const [isEditingOffer, setIsEditingOffer] = useState(false);
   const [isDeletingOfferId, setIsDeletingOfferId] = useState<string | null>(null);
+
+  // --- Verify Reward on Dashboard Home State ---
+  const [verifyRewardCode, setVerifyRewardCode] = useState('');
+  const [isVerifyingReward, setIsVerifyingReward] = useState(false);
+  const [isConfirmingRedemption, setIsConfirmingRedemption] = useState(false);
+  const [rewardVerificationState, setRewardVerificationState] = useState<{
+    status: 'idle' | 'PENDING' | 'ALREADY_REDEEMED' | 'INVALID' | 'CONFIRMED_SUCCESS';
+    claim?: RewardClaimed;
+    message?: string;
+  }>({ status: 'idle' });
 
   const isBusinessSetupDone = useCallback((biz?: Business | null): boolean => {
     if (!biz) return false;
@@ -911,6 +934,111 @@ function OwnerDashboardContent() {
     } finally {
       setIsCounterSubmitting(false);
     }
+  }
+
+  // --- Home Dashboard: Verify & Confirm Reward Handlers ---
+  async function handleVerifyRewardCode(e?: React.FormEvent) {
+    if (e) e.preventDefault();
+    const cleanCode = verifyRewardCode.trim().replace(/\s+/g, '');
+    if (!cleanCode) return;
+    if (!selectedBusiness) return;
+
+    try {
+      setIsVerifyingReward(true);
+      sound.playClick();
+      const res = await fetch('/api/reward/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: cleanCode,
+          businessId: selectedBusiness.id,
+          action: 'verify',
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.status === 'PENDING') {
+        sound.playStampPop();
+        setRewardVerificationState({
+          status: 'PENDING',
+          claim: data.claim,
+          message: data.message || 'Valid reward ready for redemption',
+        });
+      } else if (data.status === 'ALREADY_REDEEMED') {
+        sound.playClick();
+        setRewardVerificationState({
+          status: 'ALREADY_REDEEMED',
+          claim: data.claim,
+          message: 'This reward has already been redeemed.',
+        });
+      } else {
+        sound.playClick();
+        setRewardVerificationState({
+          status: 'INVALID',
+          message: data.message || 'This reward code does not exist.',
+        });
+      }
+    } catch {
+      setRewardVerificationState({
+        status: 'INVALID',
+        message: 'Network error verifying reward code.',
+      });
+    } finally {
+      setIsVerifyingReward(false);
+    }
+  }
+
+  async function handleConfirmRewardRedemption() {
+    const cleanCode = verifyRewardCode.trim().replace(/\s+/g, '');
+    if (!cleanCode || !selectedBusiness) return;
+
+    try {
+      setIsConfirmingRedemption(true);
+      sound.playClick();
+      const res = await fetch('/api/reward/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: cleanCode,
+          businessId: selectedBusiness.id,
+          action: 'confirm',
+          verifiedBy: 'admin_counter',
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success && data.status === 'REDEEMED') {
+        sound.playRewardFanfare();
+        confetti({ particleCount: 90, spread: 70, origin: { y: 0.6 } });
+        setRewardVerificationState({
+          status: 'CONFIRMED_SUCCESS',
+          claim: data.claim,
+          message: 'Redemption confirmed! Cannot be redeemed again.',
+        });
+        await loadDashboardData(selectedBusiness.id);
+      } else if (data.status === 'ALREADY_REDEEMED') {
+        setRewardVerificationState({
+          status: 'ALREADY_REDEEMED',
+          claim: data.claim,
+          message: 'This reward has already been redeemed.',
+        });
+      } else {
+        setRewardVerificationState({
+          status: 'INVALID',
+          message: data.message || 'Failed to confirm redemption.',
+        });
+      }
+    } catch {
+      alert('Network error confirming redemption.');
+    } finally {
+      setIsConfirmingRedemption(false);
+    }
+  }
+
+  function handleResetRewardVerification() {
+    sound.playClick();
+    setVerifyRewardCode('');
+    setRewardVerificationState({ status: 'idle' });
   }
 
   async function handleCounterWalkInSubmit(e: React.FormEvent) {
@@ -2494,6 +2622,269 @@ function OwnerDashboardContent() {
                   })()}
                 </div>
               </div>
+            </div>
+
+            {/* VERIFY REWARD ON DASHBOARD HOME (QUICK SALON COUNTER VERIFICATION) */}
+            <div className="bg-white rounded-3xl p-5 sm:p-7 border border-slate-200/90 card-soft-shadow space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3.5">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-[#0F172A] text-white flex items-center justify-center shrink-0 shadow-xs">
+                    <ShieldCheck className="w-5 h-5 text-emerald-400" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-display font-black text-base sm:text-lg text-[#0F172A] tracking-tight">
+                        VERIFY REWARD
+                      </h3>
+                      <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                        Counter Tool
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      Enter customer&apos;s 6-digit reward code to verify and confirm treat redemption
+                    </p>
+                  </div>
+                </div>
+
+                {rewardVerificationState.status !== 'idle' && (
+                  <button
+                    type="button"
+                    onClick={handleResetRewardVerification}
+                    className="text-xs font-semibold text-slate-500 hover:text-slate-800 flex items-center gap-1 self-start sm:self-auto cursor-pointer"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Clear / Verify Another</span>
+                  </button>
+                )}
+              </div>
+
+              {/* IDLE / CODE ENTRY STATE */}
+              {rewardVerificationState.status === 'idle' && (
+                <form onSubmit={handleVerifyRewardCode} className="space-y-4 pt-1 max-w-xl">
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5 font-mono">
+                      Enter 6-digit reward code
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        maxLength={6}
+                        value={verifyRewardCode}
+                        onChange={(e) => setVerifyRewardCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        placeholder="4 8 3 9 2 1"
+                        className="w-full px-5 py-3.5 rounded-2xl border-2 border-slate-200 focus:border-[#0F172A] bg-slate-50/70 focus:bg-white text-center font-mono font-black text-2xl sm:text-3xl tracking-[0.3em] text-[#0F172A] placeholder:text-slate-300 focus:outline-none transition-all shadow-inner"
+                        autoComplete="off"
+                        required
+                      />
+                      {verifyRewardCode && (
+                        <button
+                          type="button"
+                          onClick={() => setVerifyRewardCode('')}
+                          className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-1.5 font-mono">
+                      Customer shows this code after claiming reward on their loyalty pass.
+                    </p>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={verifyRewardCode.trim().length !== 6 || isVerifyingReward}
+                    className="w-full sm:w-auto px-8 py-3.5 rounded-2xl bg-[#0F172A] hover:bg-black disabled:bg-slate-200 disabled:text-slate-400 text-white font-display font-bold text-xs uppercase tracking-wider transition-all shadow-md active:scale-95 cursor-pointer disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {isVerifyingReward ? (
+                      <RefreshCw className="w-4 h-4 animate-spin text-emerald-400" />
+                    ) : (
+                      <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                    )}
+                    <span>{isVerifyingReward ? 'Verifying...' : 'VERIFY REWARD'}</span>
+                  </button>
+                </form>
+              )}
+
+              {/* STATE 1: VALID REWARD + PENDING */}
+              {rewardVerificationState.status === 'PENDING' && (
+                <div className="bg-emerald-50/70 border-2 border-emerald-500/40 rounded-2xl p-5 sm:p-6 space-y-4 animate-in fade-in">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2 text-emerald-800 font-display font-black text-sm sm:text-base tracking-wide">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                      <span>✓ VALID REWARD</span>
+                    </div>
+                    <span className="px-2.5 py-0.5 rounded-full font-mono text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1">
+                      <Clock className="w-3 h-3 text-amber-700" />
+                      Status: PENDING
+                    </span>
+                  </div>
+
+                  <div className="bg-white/90 rounded-xl p-4 border border-emerald-200/80 space-y-2 text-xs">
+                    <div className="flex justify-between items-baseline gap-2 pb-1.5 border-b border-slate-100">
+                      <span className="text-slate-500 font-medium">Reward:</span>
+                      <span className="font-bold text-slate-900 text-sm font-display text-right">
+                        {rewardVerificationState.claim?.reward_desc || 'Free Treat'}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between items-center gap-2 pb-1.5 border-b border-slate-100 font-mono">
+                      <span className="text-slate-500">Code:</span>
+                      <span className="font-bold text-slate-900 text-base tracking-widest">
+                        {rewardVerificationState.claim?.voucher_code || verifyRewardCode}
+                      </span>
+                    </div>
+
+                    {rewardVerificationState.claim?.customer?.name && (
+                      <div className="flex justify-between items-center gap-2 pb-1.5 border-b border-slate-100">
+                        <span className="text-slate-500 font-medium">Customer:</span>
+                        <span className="font-bold text-slate-800">
+                          {rewardVerificationState.claim.customer.name}
+                          {rewardVerificationState.claim.customer.phone ? ` (${rewardVerificationState.claim.customer.phone})` : ''}
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="flex justify-between items-center gap-2 font-mono">
+                      <span className="text-slate-500">Status:</span>
+                      <span className="font-bold text-amber-700">PENDING</span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row gap-3 pt-1">
+                    <button
+                      type="button"
+                      onClick={handleConfirmRewardRedemption}
+                      disabled={isConfirmingRedemption}
+                      className="flex-1 py-3.5 px-6 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-display font-bold text-xs uppercase tracking-wider shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
+                    >
+                      {isConfirmingRedemption ? (
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Check className="w-4 h-4 stroke-[3]" />
+                      )}
+                      <span>{isConfirmingRedemption ? 'Confirming...' : 'CONFIRM REDEMPTION'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleResetRewardVerification}
+                      className="py-3 px-5 rounded-xl border border-slate-300 text-slate-700 hover:bg-white text-xs font-semibold cursor-pointer"
+                    >
+                      Cancel / Back
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* STATE 2: REDEEMED CONFIRMED SUCCESS (PENDING -> REDEEMED) */}
+              {rewardVerificationState.status === 'CONFIRMED_SUCCESS' && (
+                <div className="bg-emerald-50 border-2 border-emerald-500 rounded-2xl p-5 sm:p-6 space-y-4 animate-in fade-in">
+                  <div className="flex items-center gap-2 text-emerald-800 font-display font-black text-sm sm:text-base">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                    <span>✓ REDEMPTION CONFIRMED</span>
+                  </div>
+
+                  <div className="bg-white rounded-xl p-4 border border-emerald-200 space-y-2 text-xs">
+                    <div className="flex justify-between items-center gap-2 pb-1.5 border-b border-slate-100">
+                      <span className="text-slate-500 font-medium">Reward:</span>
+                      <span className="font-bold text-slate-900 font-display">
+                        {rewardVerificationState.claim?.reward_desc}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center gap-2 pb-1.5 border-b border-slate-100 font-mono">
+                      <span className="text-slate-500">Code:</span>
+                      <span className="font-bold text-slate-900 tracking-widest">
+                        {rewardVerificationState.claim?.voucher_code || verifyRewardCode}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center gap-2 font-mono">
+                      <span className="text-slate-500">Status:</span>
+                      <span className="font-bold text-emerald-700">REDEEMED</span>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-emerald-900 font-medium">
+                    This reward has been marked as <b>REDEEMED</b> and cannot be redeemed again.
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={handleResetRewardVerification}
+                    className="w-full sm:w-auto py-3 px-6 rounded-xl bg-[#0F172A] hover:bg-black text-white font-display font-bold text-xs uppercase tracking-wider transition-all shadow-md cursor-pointer"
+                  >
+                    Verify Another Reward
+                  </button>
+                </div>
+              )}
+
+              {/* STATE 3: ALREADY REDEEMED */}
+              {rewardVerificationState.status === 'ALREADY_REDEEMED' && (
+                <div className="bg-rose-50/80 border-2 border-rose-300 rounded-2xl p-5 sm:p-6 space-y-3.5 text-left animate-in fade-in">
+                  <div className="flex items-center gap-2 text-rose-800 font-display font-black text-sm sm:text-base">
+                    <XCircle className="w-5 h-5 text-rose-600 shrink-0" />
+                    <span>✕ ALREADY REDEEMED</span>
+                  </div>
+
+                  <p className="text-xs text-rose-800 font-medium">
+                    This reward has already been redeemed.
+                  </p>
+
+                  <div className="bg-white/90 rounded-xl p-3.5 border border-rose-200 space-y-1.5 text-xs">
+                    <div className="flex justify-between items-center gap-2">
+                      <span className="text-slate-500 font-medium">Reward:</span>
+                      <span className="font-bold text-slate-800 font-display">
+                        {rewardVerificationState.claim?.reward_desc || 'Free Treat'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center gap-2 font-mono">
+                      <span className="text-slate-500">Code:</span>
+                      <span className="font-bold text-slate-800 tracking-wider">
+                        {rewardVerificationState.claim?.voucher_code || verifyRewardCode}
+                      </span>
+                    </div>
+                    <div className="pt-1 text-[11px] font-mono text-slate-600">
+                      <div>Redeemed:</div>
+                      <div className="font-bold text-slate-900 mt-0.5">
+                        {formatRedeemedDate(rewardVerificationState.claim?.redeemed_at || rewardVerificationState.claim?.claimed_at)}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* NO REDEMPTION BUTTON SHOWN */}
+                  <button
+                    type="button"
+                    onClick={handleResetRewardVerification}
+                    className="w-full sm:w-auto py-2.5 px-5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 font-display font-bold text-xs uppercase tracking-wider transition-all shadow-2xs cursor-pointer"
+                  >
+                    Check Another Code
+                  </button>
+                </div>
+              )}
+
+              {/* STATE 4: INVALID REWARD CODE */}
+              {rewardVerificationState.status === 'INVALID' && (
+                <div className="bg-rose-50/80 border-2 border-rose-300 rounded-2xl p-5 sm:p-6 space-y-3.5 text-left animate-in fade-in">
+                  <div className="flex items-center gap-2 text-rose-800 font-display font-black text-sm sm:text-base">
+                    <XCircle className="w-5 h-5 text-rose-600 shrink-0" />
+                    <span>✕ INVALID REWARD CODE</span>
+                  </div>
+
+                  <p className="text-xs text-rose-800 font-medium">
+                    This reward code does not exist.
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={handleResetRewardVerification}
+                    className="w-full sm:w-auto py-2.5 px-5 rounded-xl bg-[#0F172A] hover:bg-black text-white font-display font-bold text-xs uppercase tracking-wider transition-all shadow-2xs cursor-pointer"
+                  >
+                    Try Again
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* COUNTER STAMPING TOOL (FAST 2-STEP SEARCH & POS PANEL) */}

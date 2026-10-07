@@ -1990,12 +1990,39 @@ class RevaDatabase {
     };
   }
 
+  private parseRewardClaim(rawClaim: any): RewardClaimed {
+    const verifiedByStr = String(rawClaim.verified_by || '');
+    let voucherCode: string | undefined = rawClaim.voucher_code;
+    let status: 'PENDING' | 'REDEEMED' = rawClaim.status || 'REDEEMED';
+    let redeemedAt: string | undefined = rawClaim.redeemed_at;
+
+    if (verifiedByStr.includes('code:')) {
+      const parts = verifiedByStr.split('|');
+      for (const part of parts) {
+        const [k, ...rest] = part.split(':');
+        const val = rest.join(':');
+        if (k === 'code' && val) voucherCode = val;
+        if (k === 'status' && (val === 'PENDING' || val === 'REDEEMED')) status = val as any;
+        if (k === 'redeemed_at' && val) redeemedAt = val;
+      }
+    }
+
+    return {
+      ...rawClaim,
+      voucher_code: voucherCode,
+      status,
+      redeemed_at: redeemedAt,
+    };
+  }
+
   // --- Rewards Claimed ---
   public async claimReward(
     membershipId: string,
     businessId: string,
     rewardDesc: string,
-    verifiedBy = 'counter_staff'
+    verifiedBy = 'counter_staff',
+    voucherCode?: string,
+    status: 'PENDING' | 'REDEEMED' = 'PENDING'
   ): Promise<RewardClaimed> {
     const mem = await this.getMembershipById(membershipId);
     const bus = await this.getBusinessById(businessId);
@@ -2011,6 +2038,8 @@ class RevaDatabase {
 
     const newStamps = Math.max(0, currentStamps - stampsNeeded);
     const nowIso = new Date().toISOString();
+    const finalCode = voucherCode || Math.floor(100000 + Math.random() * 900000).toString();
+    const encodedVerifiedBy = `code:${finalCode}|status:${status}|by:${verifiedBy}`;
 
     let createdClaim: RewardClaimed | null = null;
     try {
@@ -2020,13 +2049,13 @@ class RevaDatabase {
           membership_id: actualMemId,
           business_id: actualBusId,
           reward_desc: rewardDesc,
-          verified_by: verifiedBy,
+          verified_by: encodedVerifiedBy,
           claimed_at: nowIso,
         })
         .select()
         .single();
       if (!error && data) {
-        createdClaim = data;
+        createdClaim = this.parseRewardClaim(data);
       }
 
       // Deduct/Reset stamps in Supabase memberships table
@@ -2058,12 +2087,128 @@ class RevaDatabase {
       business_id: actualBusId,
       claimed_at: nowIso,
       reward_desc: rewardDesc,
-      verified_by: verifiedBy,
+      verified_by: encodedVerifiedBy,
+      voucher_code: finalCode,
+      status: status,
       customer: mem?.customer,
       membership: mem || undefined,
     };
     this.rewardsClaimed.unshift(claim);
     return claim;
+  }
+
+  // --- Look up reward claim by 6-digit code ---
+  public async getRewardClaimByCode(
+    code: string,
+    businessId?: string
+  ): Promise<(RewardClaimed & { customer?: Customer; membership?: Membership }) | null> {
+    const cleanCode = String(code).trim();
+    if (!cleanCode) return null;
+
+    try {
+      let query = supabaseAdmin
+        .from('rewards_claimed')
+        .select('*, membership:memberships(*, customer:customers(*))')
+        .ilike('verified_by', `%code:${cleanCode}%`);
+
+      if (businessId) {
+        query = query.eq('business_id', businessId);
+      }
+
+      const { data, error } = await query.limit(1);
+      if (!error && data && data.length > 0) {
+        const raw = data[0];
+        const parsed = this.parseRewardClaim(raw);
+        return {
+          ...parsed,
+          customer: raw.membership?.customer,
+          membership: raw.membership,
+        };
+      }
+    } catch (e) {
+      console.error('getRewardClaimByCode error:', e);
+    }
+
+    // Fallback to in-memory store
+    const inMem = this.rewardsClaimed.find((c) => {
+      const matchCode = c.voucher_code === cleanCode || c.verified_by?.includes(`code:${cleanCode}`);
+      const matchBus = !businessId || c.business_id === businessId;
+      return matchCode && matchBus;
+    });
+
+    if (inMem) {
+      const mem = this.memberships.find((m) => m.id === inMem.membership_id);
+      const customer = mem ? this.customers.find((cust) => cust.id === mem.customer_id) : undefined;
+      return {
+        ...this.parseRewardClaim(inMem),
+        customer: inMem.customer || customer,
+        membership: inMem.membership || mem,
+      };
+    }
+
+    return null;
+  }
+
+  // --- Confirm reward redemption by 6-digit code ---
+  public async confirmRewardRedemption(
+    code: string,
+    businessId?: string,
+    verifiedBy = 'admin_counter'
+  ): Promise<{ success: boolean; status: 'REDEEMED' | 'ALREADY_REDEEMED' | 'INVALID'; claim?: RewardClaimed; error?: string }> {
+    const cleanCode = String(code).trim();
+    const existing = await this.getRewardClaimByCode(cleanCode, businessId);
+    if (!existing) {
+      return { success: false, status: 'INVALID', error: 'This reward code does not exist.' };
+    }
+
+    if (existing.status === 'REDEEMED') {
+      return {
+        success: false,
+        status: 'ALREADY_REDEEMED',
+        claim: existing,
+        error: 'This reward has already been redeemed.',
+      };
+    }
+
+    const nowIso = new Date().toISOString();
+    const newVerifiedBy = `code:${cleanCode}|status:REDEEMED|redeemed_at:${nowIso}|by:${verifiedBy}`;
+
+    try {
+      const { error } = await supabaseAdmin
+        .from('rewards_claimed')
+        .update({ verified_by: newVerifiedBy })
+        .eq('id', existing.id);
+
+      if (error) {
+        console.error('Supabase confirmRewardRedemption update error:', error);
+      }
+    } catch (e) {
+      console.error('confirmRewardRedemption error:', e);
+    }
+
+    // Update in-memory
+    const idx = this.rewardsClaimed.findIndex((c) => c.id === existing.id);
+    if (idx !== -1) {
+      this.rewardsClaimed[idx] = {
+        ...this.rewardsClaimed[idx],
+        verified_by: newVerifiedBy,
+        status: 'REDEEMED',
+        redeemed_at: nowIso,
+      };
+    }
+
+    const updatedClaim: RewardClaimed = {
+      ...existing,
+      verified_by: newVerifiedBy,
+      status: 'REDEEMED',
+      redeemed_at: nowIso,
+    };
+
+    return {
+      success: true,
+      status: 'REDEEMED',
+      claim: updatedClaim,
+    };
   }
 
   public async getRewardsClaimedForBusiness(
@@ -2079,11 +2224,14 @@ class RevaDatabase {
         .limit(limit);
 
       if (!error && data) {
-        return data.map((r: any) => ({
-          ...r,
-          customer: r.membership?.customer,
-          membership: r.membership,
-        }));
+        return data.map((r: any) => {
+          const parsed = this.parseRewardClaim(r);
+          return {
+            ...parsed,
+            customer: r.membership?.customer,
+            membership: r.membership,
+          };
+        });
       }
     } catch (e) {
       console.error('getRewardsClaimedForBusiness error:', e);
@@ -2097,7 +2245,7 @@ class RevaDatabase {
         const mem = this.memberships.find((m) => m.id === c.membership_id);
         const customer = mem ? this.customers.find((cust) => cust.id === mem.customer_id) : undefined;
         return {
-          ...c,
+          ...this.parseRewardClaim(c),
           customer: c.customer || customer,
           membership: c.membership || mem,
         };

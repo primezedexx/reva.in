@@ -92,7 +92,13 @@ function CustomerWalletCardContent() {
     rewardTitle: string;
     claimedAt: string;
     voucherCode: string;
+    status?: 'PENDING' | 'REDEEMED';
   }>>([]);
+  const [latestClaimedVoucher, setLatestClaimedVoucher] = useState<{
+    code: string;
+    title: string;
+    status: 'PENDING' | 'REDEEMED';
+  } | null>(null);
 
   // Stamp & Cooldown Interaction State
   const [stampAnimating, setStampAnimating] = useState(false);
@@ -518,6 +524,8 @@ function CustomerWalletCardContent() {
     try {
       sound.playClick();
       const rewardTitle = selectedRedeemOffer?.title || business.reward_rule?.reward_title || 'Free Specialty Beverage';
+      const sixDigitCode = Math.floor(100000 + Math.random() * 900000).toString();
+
       const res = await fetch('/api/reward/redeem', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -525,7 +533,9 @@ function CustomerWalletCardContent() {
           membershipId: membership.id,
           businessId: business.id,
           rewardDesc: rewardTitle,
-          verifiedBy: 'customer_self_verify',
+          verifiedBy: 'customer_claim',
+          voucherCode: sixDigitCode,
+          status: 'PENDING',
         }),
       });
       const data = await res.json();
@@ -533,6 +543,11 @@ function CustomerWalletCardContent() {
         setRewardClaimedSuccess(true);
         setShowRedeemModal(false);
         setSelectedRedeemOffer(null);
+        setLatestClaimedVoucher({
+          code: sixDigitCode,
+          title: rewardTitle,
+          status: 'PENDING',
+        });
         sound.playRewardFanfare();
         confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
         // Refresh membership stamps
@@ -541,7 +556,6 @@ function CustomerWalletCardContent() {
 
         // Sync with Reva Customer Hub localStorage
         try {
-          const code = `REV-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
           const savedPasses = localStorage.getItem('reva_customer_passes');
           if (savedPasses) {
             const parsed = JSON.parse(savedPasses);
@@ -554,13 +568,20 @@ function CustomerWalletCardContent() {
           }
           const savedClaimed = localStorage.getItem('reva_claimed_rewards');
           const claimedList = savedClaimed ? JSON.parse(savedClaimed) : [];
+          const nowStr = new Date().toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          });
           const newClaimItem = {
-            id: `claim_${Date.now()}`,
+            id: data.claim?.id || `claim_${Date.now()}`,
             businessName: business.name,
             businessSlug: slug,
             rewardTitle,
-            claimedAt: 'Just now',
-            voucherCode: code,
+            claimedAt: nowStr,
+            voucherCode: sixDigitCode,
+            status: 'PENDING' as const,
           };
           claimedList.unshift(newClaimItem);
           setClaimedRewards((prev) => [newClaimItem, ...prev]);
@@ -1549,15 +1570,23 @@ function CustomerWalletCardContent() {
                           <div className="space-y-0.5">
                             <div className="text-[10px] font-mono text-slate-400">{hist.businessName || business.name}</div>
                             <h4 className="font-display font-bold text-xs text-slate-900">{hist.rewardTitle}</h4>
-                            <div className="text-[10px] text-slate-400 flex items-center gap-1 font-mono">
-                              <span>Code: {hist.voucherCode}</span>
+                            <div className="text-[10px] text-slate-500 flex items-center gap-1.5 font-mono">
+                              <span>Code: <b className="text-slate-800 tracking-wider">{hist.voucherCode}</b></span>
                               <span>•</span>
                               <span>{hist.claimedAt}</span>
                             </div>
                           </div>
-                          <span className="text-[10px] font-mono font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md">
-                            REDEEMED
-                          </span>
+                          {hist.status === 'REDEEMED' ? (
+                            <span className="text-[10px] font-mono font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-md flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                              REDEEMED
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-mono font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-md flex items-center gap-1">
+                              <Clock className="w-3 h-3 text-amber-600" />
+                              PENDING
+                            </span>
+                          )}
                         </div>
                       ))
                     )}
@@ -2095,6 +2124,47 @@ function CustomerWalletCardContent() {
                 Staff Confirmed
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 4b. 6-DIGIT REWARD VOUCHER MODAL */}
+      {latestClaimedVoucher && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl text-center space-y-4 animate-stamp">
+            <div
+              className="w-16 h-16 rounded-2xl text-amber-400 flex items-center justify-center mx-auto shadow-md"
+              style={{ backgroundColor: business.brand_color || '#0F172A' }}
+            >
+              <Gift className="w-8 h-8" />
+            </div>
+
+            <div className="space-y-1">
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300">
+                <Clock className="w-3 h-3 text-amber-700" />
+                <span>Status: PENDING</span>
+              </span>
+              <h3 className="text-lg font-display font-bold text-[#0F172A]">{latestClaimedVoucher.title}</h3>
+              <p className="text-xs text-slate-500">
+                Show this 6-digit reward code to the cashier at the counter to redeem.
+              </p>
+            </div>
+
+            {/* Prominent 6-Digit Code Box */}
+            <div className="p-4 rounded-2xl bg-slate-50 border-2 border-dashed border-slate-300 space-y-1">
+              <div className="text-[10px] font-mono text-slate-400 uppercase font-bold tracking-wider">Reward Code</div>
+              <div className="font-mono font-black text-3xl tracking-[0.25em] text-[#0F172A]">
+                {latestClaimedVoucher.code}
+              </div>
+            </div>
+
+            <button
+              onClick={() => setLatestClaimedVoucher(null)}
+              className="w-full py-3 rounded-full text-white text-xs font-bold hover:brightness-110 shadow-md cursor-pointer uppercase tracking-wider"
+              style={{ backgroundColor: business.brand_color || '#0F172A' }}
+            >
+              Done (Saved in History)
+            </button>
           </div>
         </div>
       )}

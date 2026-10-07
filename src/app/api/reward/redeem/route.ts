@@ -8,7 +8,7 @@ import { db } from '@/lib/db';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { membershipId, businessId, rewardDesc, verifiedBy } = body;
+    const { membershipId, businessId, rewardDesc, verifiedBy, voucherCode, status } = body;
 
     if (!membershipId || !businessId) {
       return NextResponse.json(
@@ -21,7 +21,9 @@ export async function POST(req: NextRequest) {
       membershipId,
       businessId,
       rewardDesc || 'Loyalty Reward Claimed',
-      verifiedBy || 'counter_staff'
+      verifiedBy || 'customer_claim',
+      voucherCode,
+      status || 'PENDING'
     );
 
     const updatedMem = await db.getMembershipById(membershipId);
@@ -34,6 +36,34 @@ export async function POST(req: NextRequest) {
   } catch (err: unknown) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Failed to redeem reward' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function GET(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const businessId = searchParams.get('businessId');
+    const code = searchParams.get('code');
+
+    if (code) {
+      const claim = await db.getRewardClaimByCode(code, businessId || undefined);
+      if (!claim) {
+        return NextResponse.json({ success: false, status: 'INVALID', message: 'Reward code not found' }, { status: 404 });
+      }
+      return NextResponse.json({ success: true, claim });
+    }
+
+    if (businessId) {
+      const claims = await db.getRewardsClaimedForBusiness(businessId);
+      return NextResponse.json({ success: true, claims });
+    }
+
+    return NextResponse.json({ error: 'businessId or code required' }, { status: 400 });
+  } catch (err: unknown) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'Failed to fetch rewards' },
       { status: 500 }
     );
   }

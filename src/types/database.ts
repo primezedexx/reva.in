@@ -228,6 +228,8 @@ export interface RewardClaimed {
   reward_desc: string;
   verified_by: string;
   voucher_code?: string;
+  status?: 'PENDING' | 'REDEEMED';
+  redeemed_at?: string;
   customer?: Customer;
   membership?: Membership;
 }
