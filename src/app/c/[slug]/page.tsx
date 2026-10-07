@@ -6,7 +6,7 @@
 // Bottom Tab Bar: [🏠 Stamp Card] [🎁 Offers] [🕒 Visits]
 // ============================================================================
 
-import React, { useState, useEffect, useMemo, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, Suspense } from 'react';
 import { useSearchParams, useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import confetti from 'canvas-confetti';
@@ -112,7 +112,8 @@ function CustomerWalletCardContent() {
   } | null>(null);
   const [rewardClaimedSuccess, setRewardClaimedSuccess] = useState(false);
   const [showRedeemModal, setShowRedeemModal] = useState(false);
-  const [selectedRedeemOffer, setSelectedRedeemOffer] = useState<{ title: string; desc?: string; stampsNeeded?: number } | null>(null);
+  const [selectedRedeemOffer, setSelectedRedeemOffer] = useState<{ title: string; desc?: string; stampsNeeded?: number; expiryText?: string } | null>(null);
+  const [selectedMilestoneInfo, setSelectedMilestoneInfo] = useState<{ offer: any; expiryInfo: any } | null>(null);
   const [showWalletModal, setShowWalletModal] = useState<'apple' | 'google' | null>(null);
   const [showScannerModal, setShowScannerModal] = useState(false);
 
@@ -585,6 +586,51 @@ function CustomerWalletCardContent() {
     ? business.active_offers
     : [];
 
+  // Intermediate milestone rewards configured on the pass
+  const milestoneOffers = useMemo(() => {
+    return activeOffers.filter((o) => (o.stamps_needed || 0) < stampsNeeded);
+  }, [activeOffers, stampsNeeded]);
+
+  // Compute precise date-based expiry info for any reward or milestone offer
+  const getOfferExpiryInfo = useCallback((offer: { expiry_days?: number; stamps_needed?: number }) => {
+    if (!offer.expiry_days || offer.expiry_days <= 0) {
+      return {
+        hasExpiry: false,
+        label: 'No expiry',
+        dateStr: '',
+        daysLeft: null,
+        isUrgent: false,
+        text: 'No expiry limit • Complete anytime',
+      };
+    }
+
+    const memberStartDate = membership?.created_at ? new Date(membership.created_at) : null;
+    if (memberStartDate && !isNaN(memberStartDate.getTime())) {
+      const expDate = new Date(memberStartDate.getTime() + offer.expiry_days * 24 * 60 * 60 * 1000);
+      const msLeft = expDate.getTime() - Date.now();
+      const daysLeft = Math.max(0, Math.ceil(msLeft / (1000 * 60 * 60 * 24)));
+      const dateStr = expDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+      const isUrgent = daysLeft <= 3;
+      return {
+        hasExpiry: true,
+        label: `Complete within ${offer.expiry_days} days`,
+        dateStr,
+        daysLeft,
+        isUrgent,
+        text: `Expires on ${dateStr} • ${daysLeft} ${daysLeft === 1 ? 'day' : 'days'} left to complete`,
+      };
+    }
+
+    return {
+      hasExpiry: true,
+      label: `Complete within ${offer.expiry_days} days`,
+      dateStr: '',
+      daysLeft: offer.expiry_days,
+      isUrgent: false,
+      text: `Complete within ${offer.expiry_days} days of pass start`,
+    };
+  }, [membership]);
+
   // Derived ready-to-claim unlocked rewards for this store (placed before any early returns to satisfy React Hook rules)
   const unlockedRewardsList = useMemo(() => {
     if (!business) return [];
@@ -596,9 +642,15 @@ function CustomerWalletCardContent() {
       rewardTitle: string;
       stamps: number;
       totalNeeded: number;
+      expiryDays?: number;
+      expiryDateText?: string;
     }> = [];
 
     if (currentStamps >= stampsNeeded && grandRewardTitle) {
+      const grandExpiry = getOfferExpiryInfo({
+        expiry_days: business.reward_rule?.expiry_days,
+        stamps_needed: stampsNeeded,
+      });
       list.push({
         id: 'main_store_reward',
         businessName: business.name,
@@ -607,6 +659,8 @@ function CustomerWalletCardContent() {
         rewardTitle: grandRewardTitle,
         stamps: currentStamps,
         totalNeeded: stampsNeeded,
+        expiryDays: business.reward_rule?.expiry_days,
+        expiryDateText: grandExpiry.hasExpiry ? grandExpiry.text : undefined,
       });
     }
 
@@ -614,6 +668,7 @@ function CustomerWalletCardContent() {
       for (const off of business.active_offers) {
         const offNeeded = off.stamps_needed || stampsNeeded;
         if (currentStamps >= offNeeded && off.title !== grandRewardTitle) {
+          const offExpiry = getOfferExpiryInfo(off);
           list.push({
             id: off.id || `off_${off.title}`,
             businessName: business.name,
@@ -622,13 +677,15 @@ function CustomerWalletCardContent() {
             rewardTitle: off.title,
             stamps: currentStamps,
             totalNeeded: offNeeded,
+            expiryDays: off.expiry_days,
+            expiryDateText: offExpiry.hasExpiry ? offExpiry.text : undefined,
           });
         }
       }
     }
 
     return list;
-  }, [currentStamps, stampsNeeded, grandRewardTitle, business]);
+  }, [currentStamps, stampsNeeded, grandRewardTitle, business, getOfferExpiryInfo]);
 
   if (loading) {
     return (
@@ -1006,13 +1063,25 @@ function CustomerWalletCardContent() {
                         return (
                           <div
                             key={index}
+                            onClick={() => {
+                              if (matchedOffer) {
+                                sound.playClick();
+                                setSelectedMilestoneInfo({
+                                  offer: matchedOffer,
+                                  expiryInfo: getOfferExpiryInfo(matchedOffer),
+                                });
+                              }
+                            }}
                             className={`aspect-square rounded-2xl flex flex-col items-center justify-center relative transition-all duration-300 ${
                               isStamped
                                 ? 'bg-white text-slate-950 shadow-lg scale-100 animate-stamp'
                                 : isNext
                                 ? 'border-2 border-dashed border-white/80 bg-white/15 scale-95 ring-2 ring-white/30'
+                                : matchedOffer
+                                ? 'border-2 border-dashed border-amber-300/80 bg-amber-400/10 hover:bg-amber-400/20 cursor-pointer active:scale-95'
                                 : 'border-2 border-dashed border-white/30 bg-black/10 opacity-60'
                             }`}
+                            title={matchedOffer ? `Milestone: ${matchedOffer.title} (Tap to view details)` : undefined}
                           >
                             {renderStampIconSymbol(stampIcon, isStamped, isRewardSlot || Boolean(matchedOffer))}
 
@@ -1022,7 +1091,7 @@ function CustomerWalletCardContent() {
                               </span>
                             ) : matchedOffer ? (
                               <span className="absolute bottom-1 text-[7px] font-mono font-bold tracking-tighter uppercase text-amber-300">
-                                GIFT
+                                {matchedOffer.expiry_days ? `GIFT • ${matchedOffer.expiry_days}d` : 'GIFT'}
                               </span>
                             ) : null}
                           </div>
@@ -1168,16 +1237,100 @@ function CustomerWalletCardContent() {
                   <span className="text-[10px] font-mono text-slate-400 uppercase font-bold">Counter Rule</span>
                 </div>
 
-                {/* Reward Expiry / Stamp Validity Badge */}
-                {Boolean(business.reward_rule?.expiry_days && business.reward_rule.expiry_days > 0) && (
-                  <div className="bg-amber-50/80 border border-amber-200/80 rounded-2xl py-2 px-3.5 flex items-center justify-between text-xs text-amber-950">
-                    <div className="flex items-center gap-2 font-medium">
-                      <Clock className="w-4 h-4 text-amber-600 shrink-0" />
-                      <span>
-                        Reward Validity: <b>Complete within {business.reward_rule?.expiry_days} days</b>
+                {/* Grand Reward Expiry / Stamp Validity Badge */}
+                {Boolean(business.reward_rule?.expiry_days && business.reward_rule.expiry_days > 0) && (() => {
+                  const grandExp = getOfferExpiryInfo({
+                    expiry_days: business.reward_rule?.expiry_days,
+                    stamps_needed: stampsNeeded,
+                  });
+                  return (
+                    <div className="bg-amber-50/80 border border-amber-200/80 rounded-2xl py-2 px-3.5 flex items-center justify-between text-xs text-amber-950">
+                      <div className="flex items-center gap-2 font-medium">
+                        <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+                        <span>
+                          Grand Reward Expiry: <b>{grandExp.text || `Complete within ${business.reward_rule?.expiry_days} days`}</b>
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-mono text-amber-700 uppercase font-bold shrink-0 ml-2">
+                        {grandExp.daysLeft !== null ? `${grandExp.daysLeft}d left` : `${business.reward_rule?.expiry_days}d Limit`}
                       </span>
                     </div>
-                    <span className="text-[10px] font-mono text-amber-700 uppercase font-bold">{business.reward_rule?.expiry_days}d Limit</span>
+                  );
+                })()}
+
+                {/* Milestone Rewards & Expiry Schedule */}
+                {milestoneOffers.length > 0 && (
+                  <div className="bg-white rounded-2xl p-4 border border-slate-200/80 card-soft-shadow space-y-3 text-left">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+                          <Gift className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h4 className="font-display font-bold text-xs text-[#0F172A]">Milestone Rewards &amp; Expiry</h4>
+                          <p className="text-[10px] text-slate-500">Collect required stamps before expiry to claim</p>
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-mono font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                        {milestoneOffers.length} {milestoneOffers.length === 1 ? 'Milestone' : 'Milestones'}
+                      </span>
+                    </div>
+
+                    <div className="divide-y divide-slate-100 pt-0.5">
+                      {milestoneOffers.map((offer) => {
+                        const isUnlocked = currentStamps >= (offer.stamps_needed || 0);
+                        const expInfo = getOfferExpiryInfo(offer);
+
+                        return (
+                          <div
+                            key={offer.id || offer.title}
+                            onClick={() => {
+                              sound.playClick();
+                              setSelectedMilestoneInfo({
+                                offer,
+                                expiryInfo: expInfo,
+                              });
+                            }}
+                            className="py-2.5 first:pt-1 last:pb-0 flex items-start justify-between gap-3 cursor-pointer hover:bg-slate-50/70 -mx-1 px-1 rounded-xl transition-colors"
+                          >
+                            <div className="space-y-1 min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-display font-bold text-xs text-slate-900 truncate">
+                                  {offer.title}
+                                </span>
+                                <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 border border-slate-200">
+                                  Stamp #{offer.stamps_needed}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-1.5 text-[11px] text-slate-500 flex-wrap">
+                                <Clock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                {expInfo.hasExpiry ? (
+                                  <span className={expInfo.isUrgent ? 'text-rose-600 font-semibold' : 'text-slate-600'}>
+                                    {expInfo.text}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400">No expiry limit • Complete anytime</span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="shrink-0 text-right pt-0.5">
+                              {isUnlocked ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                  <Check className="w-3 h-3 stroke-[3]" />
+                                  <span>UNLOCKED</span>
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-mono font-semibold text-slate-500 bg-slate-50 px-2 py-0.5 rounded-full border border-slate-200">
+                                  {(offer.stamps_needed || 0) - currentStamps} left
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
 
@@ -1185,10 +1338,15 @@ function CustomerWalletCardContent() {
                 {isRewardReady && (
                   <button
                     onClick={() => {
+                      const grandExp = getOfferExpiryInfo({
+                        expiry_days: business.reward_rule?.expiry_days,
+                        stamps_needed: stampsNeeded,
+                      });
                       setSelectedRedeemOffer({
                         title: grandRewardTitle,
                         desc: business.reward_rule?.reward_desc || 'Free Grand Loyalty Reward',
                         stampsNeeded: stampsNeeded,
+                        expiryText: grandExp.hasExpiry ? grandExp.text : undefined,
                       });
                       setShowRedeemModal(true);
                       sound.playClick();
@@ -1324,7 +1482,7 @@ function CustomerWalletCardContent() {
                         </button>
                       </div>
                     ) : (
-                      unlockedRewardsList.map((reward: { id: string; businessName: string; businessSlug: string; brandColor: string; rewardTitle: string; stamps: number; totalNeeded: number }) => (
+                      unlockedRewardsList.map((reward: { id: string; businessName: string; businessSlug: string; brandColor: string; rewardTitle: string; stamps: number; totalNeeded: number; expiryDays?: number; expiryDateText?: string }) => (
                         <div
                           key={reward.id}
                           className="bg-white rounded-3xl p-4 border border-slate-200/90 relative overflow-hidden transition-all shadow-sm space-y-3"
@@ -1349,6 +1507,12 @@ function CustomerWalletCardContent() {
                                   Unlocked with {reward.stamps} / {reward.totalNeeded} stamps
                                 </span>
                               </div>
+                              {reward.expiryDateText && (
+                                <div className="text-[11px] text-amber-800 font-medium flex items-center gap-1.5 pt-0.5">
+                                  <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                                  <span>{reward.expiryDateText}</span>
+                                </div>
+                              )}
                             </div>
                           </div>
 
@@ -1362,6 +1526,7 @@ function CustomerWalletCardContent() {
                                   title: reward.rewardTitle,
                                   desc: `Unlocked with ${reward.stamps} stamps on your pass`,
                                   stampsNeeded: reward.totalNeeded,
+                                  expiryText: reward.expiryDateText,
                                 });
                                 setShowRedeemModal(true);
                               }}
@@ -1915,10 +2080,10 @@ function CustomerWalletCardContent() {
               <div className="text-xs text-slate-500 mt-1">
                 {selectedRedeemOffer?.desc || business.reward_rule?.reward_desc || 'Free unlocked reward treat'}
               </div>
-              {Boolean(business.reward_rule?.expiry_days && business.reward_rule.expiry_days > 0) && (
-                <div className="text-[11px] font-mono text-amber-800 bg-amber-50/80 px-2.5 py-1 rounded-xl border border-amber-200/60 mt-2 flex items-center justify-between">
-                  <span>Validity Window:</span>
-                  <span className="font-bold">{business.reward_rule?.expiry_days} Days</span>
+              {Boolean(selectedRedeemOffer?.expiryText || (business.reward_rule?.expiry_days && business.reward_rule.expiry_days > 0)) && (
+                <div className="text-[11px] font-mono text-amber-800 bg-amber-50/80 px-2.5 py-1.5 rounded-xl border border-amber-200/60 mt-2 flex items-center justify-between">
+                  <span>Validity / Expiry:</span>
+                  <span className="font-bold text-right ml-2">{selectedRedeemOffer?.expiryText || `${business.reward_rule?.expiry_days} Days`}</span>
                 </div>
               )}
             </div>
@@ -1979,6 +2144,66 @@ function CustomerWalletCardContent() {
               className="w-full py-3 rounded-full bg-[#0F172A] text-white text-xs font-semibold hover:bg-black cursor-pointer uppercase tracking-wider"
             >
               Done
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 6. MILESTONE REWARD PREVIEW MODAL */}
+      {/* ========================================================================= */}
+      {selectedMilestoneInfo && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl text-center space-y-4 animate-stamp">
+            <div
+              className="w-16 h-16 rounded-2xl text-amber-400 flex items-center justify-center mx-auto shadow-md"
+              style={{ backgroundColor: business.brand_color || '#0F172A' }}
+            >
+              <Gift className="w-8 h-8" />
+            </div>
+
+            <div>
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300">
+                Milestone • Stamp #{selectedMilestoneInfo.offer.stamps_needed}
+              </span>
+              <h3 className="text-lg font-display font-bold text-[#0F172A] mt-2">
+                {selectedMilestoneInfo.offer.title}
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                {selectedMilestoneInfo.offer.desc || `Unlocked when you reach ${selectedMilestoneInfo.offer.stamps_needed} stamps on your pass.`}
+              </p>
+            </div>
+
+            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 text-left space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">Stamps Required:</span>
+                <span className="font-mono font-bold text-slate-900">{selectedMilestoneInfo.offer.stamps_needed} Stamps</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">Your Current Stamps:</span>
+                <span className="font-mono font-bold text-emerald-600">
+                  {currentStamps} / {selectedMilestoneInfo.offer.stamps_needed} Stamps
+                </span>
+              </div>
+              <div className="pt-2 border-t border-slate-200/80 flex items-start justify-between gap-2">
+                <span className="text-slate-500 flex items-center gap-1 shrink-0">
+                  <Clock className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Reward Expiry:</span>
+                </span>
+                <span className="font-mono font-bold text-amber-900 text-right">
+                  {selectedMilestoneInfo.expiryInfo.hasExpiry
+                    ? selectedMilestoneInfo.expiryInfo.text
+                    : 'No expiry limit'}
+                </span>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setSelectedMilestoneInfo(null)}
+              className="w-full py-3 rounded-full text-white text-xs font-bold hover:brightness-110 shadow-md cursor-pointer uppercase tracking-wider transition-all"
+              style={{ backgroundColor: business.brand_color || '#0F172A' }}
+            >
+              Close
             </button>
           </div>
         </div>

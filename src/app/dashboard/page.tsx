@@ -368,7 +368,7 @@ function OwnerDashboardContent() {
   const [newOfferBadge, setNewOfferBadge] = useState('3 Stamps Milestone');
   const [newOfferDesc, setNewOfferDesc] = useState('');
   const [newOfferIcon, setNewOfferIcon] = useState<'flame' | 'star' | 'gift' | 'coffee' | 'tag' | 'sparkles'>('gift');
-  const [newOfferMinOrder, setNewOfferMinOrder] = useState('150');
+  const [newOfferExpiryDays, setNewOfferExpiryDays] = useState('30');
   const [isCreatingOffer, setIsCreatingOffer] = useState(false);
 
   // Edit Milestone Reward Modal State
@@ -379,7 +379,7 @@ function OwnerDashboardContent() {
   const [editOfferBadge, setEditOfferBadge] = useState('');
   const [editOfferDesc, setEditOfferDesc] = useState('');
   const [editOfferIcon, setEditOfferIcon] = useState<'flame' | 'star' | 'gift' | 'coffee' | 'tag' | 'sparkles'>('gift');
-  const [editOfferMinOrder, setEditOfferMinOrder] = useState('150');
+  const [editOfferExpiryDays, setEditOfferExpiryDays] = useState('30');
   const [isEditingOffer, setIsEditingOffer] = useState(false);
   const [isDeletingOfferId, setIsDeletingOfferId] = useState<string | null>(null);
 
@@ -1416,6 +1416,7 @@ function OwnerDashboardContent() {
       sound.playStampPop();
 
       const stamps = Number(newOfferStamps) || 3;
+      const expiry = Number(newOfferExpiryDays) > 0 ? Number(newOfferExpiryDays) : undefined;
       const newOffer: StoreOffer = {
         id: 'off_' + Math.random().toString(36).substring(2, 9),
         title: newOfferTitle.trim(),
@@ -1424,7 +1425,8 @@ function OwnerDashboardContent() {
         desc: newOfferDesc.trim() || `Unlocked when customer reaches ${stamps} stamps on their digital pass`,
         type: 'milestone',
         icon: newOfferIcon,
-        min_order: Number(newOfferMinOrder) || selectedBusiness.min_order_for_stamp || 150,
+        expiry_days: expiry,
+        min_order: selectedBusiness.min_order_for_stamp || 150,
       };
 
       const existingOffers = selectedBusiness.active_offers || [];
@@ -1447,7 +1449,7 @@ function OwnerDashboardContent() {
         setNewOfferDesc('');
         setNewOfferStamps(3);
         setNewOfferBadge('3 Stamps Reward');
-        setNewOfferMinOrder('150');
+        setNewOfferExpiryDays('30');
         await loadDashboardData(selectedBusiness.id);
       }
     } catch {
@@ -1464,7 +1466,7 @@ function OwnerDashboardContent() {
     setEditOfferBadge(offer.badge || `${offer.stamps_needed || 3} Stamps Milestone`);
     setEditOfferDesc(offer.desc || '');
     setEditOfferIcon((offer.icon as any) || 'gift');
-    setEditOfferMinOrder(String(offer.min_order || selectedBusiness?.min_order_for_stamp || 150));
+    setEditOfferExpiryDays(offer.expiry_days !== undefined ? String(offer.expiry_days) : '30');
     setShowEditOfferModal(true);
   }
 
@@ -1475,6 +1477,7 @@ function OwnerDashboardContent() {
       setIsEditingOffer(true);
       sound.playClick();
       const stamps = Number(editOfferStamps) || 3;
+      const expiry = Number(editOfferExpiryDays) > 0 ? Number(editOfferExpiryDays) : undefined;
       const existingOffers = selectedBusiness.active_offers || [];
       const updatedOffers = existingOffers.map((o) => {
         if (o.id === editingOffer.id) {
@@ -1485,7 +1488,7 @@ function OwnerDashboardContent() {
             badge: editOfferBadge.trim() || `${stamps} Stamps Milestone`,
             desc: editOfferDesc.trim() || `Unlocked when customer reaches ${stamps} stamps on their digital pass`,
             icon: editOfferIcon,
-            min_order: Number(editOfferMinOrder) || selectedBusiness.min_order_for_stamp || 150,
+            expiry_days: expiry,
           };
         }
         return o;
@@ -3204,7 +3207,7 @@ function OwnerDashboardContent() {
                         setNewOfferTitle('');
                         setNewOfferDesc('');
                         setNewOfferBadge(`${Math.max(1, Math.floor(totalStamps / 2))} Stamps Milestone`);
-                        setNewOfferMinOrder(String(minBill));
+                        setNewOfferExpiryDays('30');
                         setShowCreateOfferModal(true);
                       }}
                       className="px-3.5 py-1.5 rounded-xl bg-[#0F172A] hover:bg-black text-white text-xs font-bold shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 shrink-0"
@@ -3250,15 +3253,19 @@ function OwnerDashboardContent() {
 
                       <div className="pt-2.5 mt-2 border-t border-amber-200/60 flex items-center justify-between">
                         <span className="text-[10px] text-slate-500 font-medium">
-                          Configured in Grand Reward form below
+                          Configured in Store Settings
                         </span>
-                        <a
-                          href="#grand-reward-setup-form"
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveTab('settings');
+                            sound.playClick();
+                          }}
                           className="px-2.5 py-1 rounded-lg bg-amber-200/80 hover:bg-amber-300 text-amber-950 text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer"
                         >
                           <Edit3 className="w-3 h-3" />
-                          <span>Edit</span>
-                        </a>
+                          <span>Edit in Settings</span>
+                        </button>
                       </div>
                     </div>
 
@@ -3293,8 +3300,9 @@ function OwnerDashboardContent() {
                             <span className="px-2 py-0.5 rounded-md bg-slate-50 border border-slate-200 font-bold text-slate-700">
                               Stamp #{offer.stamps_needed}
                             </span>
-                            <span className="px-2 py-0.5 rounded-md bg-slate-50 border border-slate-200">
-                              Min Order: ₹{offer.min_order || minBill}+
+                            <span className="px-2 py-0.5 rounded-md bg-slate-50 border border-slate-200 flex items-center gap-1">
+                              <Clock className="w-3 h-3 text-slate-400" />
+                              <span>{offer.expiry_days ? `Expires: ${offer.expiry_days} days` : 'No expiry'}</span>
                             </span>
                           </div>
                         </div>
@@ -3325,120 +3333,6 @@ function OwnerDashboardContent() {
                 </div>
               );
             })()}
-
-            {/* SECTION 3: SET UP GRAND PRIZE & BASE RULES */}
-            <div id="grand-reward-setup-form" className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-100 card-soft-shadow space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-xl bg-slate-100 text-slate-800 flex items-center justify-center font-bold border border-slate-200">
-                    <Award className="w-4 h-4 text-[#0F172A]" />
-                  </div>
-                  <div>
-                    <h3 className="font-display font-bold text-sm text-[#0F172A]">
-                      Configure Grand Reward & Stamp Rules
-                    </h3>
-                  </div>
-                </div>
-              </div>
-
-              {rewardRulesSavedSuccess && (
-                <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold rounded-xl flex items-center gap-2 animate-in fade-in">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span>✓ Reward rules updated successfully! Live on all customer passes.</span>
-                </div>
-              )}
-
-              <form onSubmit={handleSaveRewardRules} className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                      Stamps for Grand Reward
-                    </label>
-                    <select
-                      value={settingsStamps}
-                      onChange={(e) => setSettingsStamps(Math.min(8, Number(e.target.value)))}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#0F172A] bg-slate-50/50"
-                    >
-                      <option value={3}>3 Stamps</option>
-                      <option value={4}>4 Stamps</option>
-                      <option value={5}>5 Stamps</option>
-                      <option value={6}>6 Stamps (Recommended)</option>
-                      <option value={7}>7 Stamps</option>
-                      <option value={8}>8 Stamps (Max Limit)</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                      Min. Order per Stamp (₹)
-                    </label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-2 text-slate-400 font-bold text-xs font-mono">₹</span>
-                      <input
-                        type="number"
-                        value={settingsMinOrder}
-                        onChange={(e) => setSettingsMinOrder(Number(e.target.value))}
-                        className="w-full pl-7 pr-3 py-2 rounded-xl border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#0F172A] font-mono bg-slate-50/50"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-semibold text-slate-700 mb-1 flex items-center justify-between">
-                      <span>Reward Expiry (Days)</span>
-                      <span className="text-[10px] font-mono text-amber-700 font-bold">
-                        {settingsRewardExpiryDays > 0 ? `${settingsRewardExpiryDays}d` : 'No Expiry'}
-                      </span>
-                    </label>
-                    <div className="relative">
-                      <input
-                        type="number"
-                        min={0}
-                        max={365}
-                        value={settingsRewardExpiryDays}
-                        onChange={(e) => setSettingsRewardExpiryDays(Math.max(0, Number(e.target.value) || 0))}
-                        placeholder="60 (0 = No expiry)"
-                        className="w-full pl-3 pr-10 py-2 rounded-xl border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#0F172A] font-mono bg-slate-50/50"
-                      />
-                      <span className="absolute right-3 top-2 text-slate-400 font-medium text-xs font-mono">
-                        days
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                    Grand Reward Title (Unlocked at {settingsStamps} Stamps) *
-                  </label>
-                  <input
-                    type="text"
-                    value={settingsRewardTitle}
-                    onChange={(e) => setSettingsRewardTitle(e.target.value)}
-                    placeholder="e.g. Free Specialty Beverage or Dessert"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#0F172A]"
-                    required
-                  />
-                </div>
-
-                <div className="pt-1 flex justify-end">
-                  <button
-                    type="submit"
-                    disabled={isSavingSettings}
-                    className="px-6 py-2.5 rounded-xl bg-[#0F172A] hover:bg-black text-white text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center justify-center gap-1.5 active:scale-98 disabled:opacity-50"
-                  >
-                    {isSavingSettings ? (
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      <>
-                        <Check className="w-3.5 h-3.5 text-emerald-400 stroke-[3]" />
-                        <span>Save Grand Reward</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </form>
-            </div>
 
             {/* SECTION 4: REWARDS GIVEN AUDIT LOG */}
             <div className="bg-white rounded-3xl border border-slate-100 card-soft-shadow overflow-hidden">
@@ -6305,15 +6199,17 @@ function OwnerDashboardContent() {
 
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Min. Order for Stamp (₹)
+                      Reward Expiry (Days)
                     </label>
                     <div className="relative">
-                      <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs font-mono">₹</span>
+                      <Clock className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
                       <input
                         type="number"
-                        value={newOfferMinOrder}
-                        onChange={(e) => setNewOfferMinOrder(e.target.value)}
-                        className="w-full pl-7 pr-3 py-2.5 rounded-xl border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#0F172A] font-mono bg-slate-50/50"
+                        min="0"
+                        value={newOfferExpiryDays}
+                        onChange={(e) => setNewOfferExpiryDays(e.target.value)}
+                        placeholder="e.g. 30 (0 for no expiry)"
+                        className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#0F172A] font-mono bg-slate-50/50"
                       />
                     </div>
                   </div>
@@ -6469,15 +6365,17 @@ function OwnerDashboardContent() {
 
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Min. Order for Stamp (₹)
+                      Reward Expiry (Days)
                     </label>
                     <div className="relative">
-                      <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs font-mono">₹</span>
+                      <Clock className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
                       <input
                         type="number"
-                        value={editOfferMinOrder}
-                        onChange={(e) => setEditOfferMinOrder(e.target.value)}
-                        className="w-full pl-7 pr-3 py-2.5 rounded-xl border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#0F172A] font-mono bg-slate-50/50"
+                        min="0"
+                        value={editOfferExpiryDays}
+                        onChange={(e) => setEditOfferExpiryDays(e.target.value)}
+                        placeholder="e.g. 30 (0 for no expiry)"
+                        className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#0F172A] font-mono bg-slate-50/50"
                       />
                     </div>
                   </div>

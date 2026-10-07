@@ -107,6 +107,8 @@ interface BusinessItem {
     stamps_needed: number;
     badge?: string;
     desc?: string;
+    expiry_days?: number;
+    min_order?: number;
   }>;
 }
 
@@ -747,6 +749,36 @@ function CustomerPortalContent() {
           totalNeeded: needed,
           expiry: pass.reward_rule?.expiry_days ? `Valid for ${pass.reward_rule.expiry_days} days` : 'Ready to claim at counter',
           image: pass.logo_url,
+        });
+      }
+
+      // Intermediate Milestone Rewards Unlocked
+      if (pass.active_offers && Array.isArray(pass.active_offers)) {
+        pass.active_offers.forEach((offer: any) => {
+          const offNeeded = offer.stamps_needed || needed;
+          if (current >= offNeeded && offer.title !== (pass.rewardTitle || pass.reward_rule?.reward_title)) {
+            let expText = 'Ready to claim at counter';
+            if (offer.expiry_days) {
+              if (pass.joined_at) {
+                const expDate = new Date(new Date(pass.joined_at).getTime() + offer.expiry_days * 24 * 60 * 60 * 1000);
+                const daysLeft = Math.max(0, Math.ceil((expDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+                expText = `Expires ${expDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} (${daysLeft}d left)`;
+              } else {
+                expText = `Valid for ${offer.expiry_days} days`;
+              }
+            }
+            derived.push({
+              id: `reward_${pass.slug}_milestone_${offer.id || offNeeded}`,
+              businessName: pass.name,
+              businessSlug: pass.slug,
+              brandColor: pass.brandColor || '#3B82F6',
+              rewardTitle: offer.title,
+              stamps: current,
+              totalNeeded: offNeeded,
+              expiry: expText,
+              image: pass.logo_url,
+            });
+          }
         });
       }
     });
