@@ -2187,14 +2187,23 @@ class RevaDatabase {
     }
 
     // Update in-memory
-    const idx = this.rewardsClaimed.findIndex((c) => c.id === existing.id);
-    if (idx !== -1) {
-      this.rewardsClaimed[idx] = {
-        ...this.rewardsClaimed[idx],
+    const inMemIdx = this.rewardsClaimed.findIndex(
+      (c) => c.id === existing.id || c.voucher_code === cleanCode || c.verified_by?.includes(`code:${cleanCode}`)
+    );
+    if (inMemIdx !== -1) {
+      this.rewardsClaimed[inMemIdx] = {
+        ...this.rewardsClaimed[inMemIdx],
         verified_by: newVerifiedBy,
         status: 'REDEEMED',
         redeemed_at: nowIso,
       };
+    } else {
+      this.rewardsClaimed.unshift({
+        ...existing,
+        verified_by: newVerifiedBy,
+        status: 'REDEEMED',
+        redeemed_at: nowIso,
+      });
     }
 
     const updatedClaim: RewardClaimed = {
@@ -2250,6 +2259,69 @@ class RevaDatabase {
           membership: c.membership || mem,
         };
       });
+  }
+
+  public async getRewardsClaimedForMembership(
+    membershipId: string,
+    limit = 50
+  ): Promise<Array<RewardClaimed & { business?: Business }>> {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('rewards_claimed')
+        .select('*')
+        .eq('membership_id', membershipId)
+        .order('claimed_at', { ascending: false })
+        .limit(limit);
+
+      if (!error && data) {
+        return data.map((r: any) => {
+          const parsed = this.parseRewardClaim(r);
+          const bus = this.businesses.find((b) => b.id === r.business_id);
+          return {
+            ...parsed,
+            business: bus,
+          };
+        });
+      }
+    } catch (e) {
+      console.error('getRewardsClaimedForMembership error:', e);
+    }
+
+    const claims = this.rewardsClaimed.filter((c) => c.membership_id === membershipId);
+    return claims
+      .sort((a, b) => new Date(b.claimed_at).getTime() - new Date(a.claimed_at).getTime())
+      .slice(0, limit)
+      .map((c) => {
+        const bus = this.businesses.find((b) => b.id === c.business_id);
+        return {
+          ...this.parseRewardClaim(c),
+          business: bus,
+        };
+      });
+  }
+
+  public async getRewardClaimsByCodes(
+    codes: string[]
+  ): Promise<RewardClaimed[]> {
+    if (!codes || codes.length === 0) return [];
+    const cleanCodes = Array.from(new Set(codes.map((c) => String(c).trim()).filter(Boolean)));
+    if (cleanCodes.length === 0) return [];
+
+    const results: RewardClaimed[] = [];
+    const foundCodes = new Set<string>();
+
+    for (const code of cleanCodes) {
+      const claim = await this.getRewardClaimByCode(code);
+      if (claim) {
+        const cCode = claim.voucher_code || code;
+        if (!foundCodes.has(cCode)) {
+          foundCodes.add(cCode);
+          results.push(claim);
+        }
+      }
+    }
+
+    return results;
   }
 
   // --- Cashier Terminal Helpers ---

@@ -645,6 +645,7 @@ function CustomerPortalContent() {
           try { localStorage.removeItem('reva_customer_email'); } catch {}
         }
 
+        const localCodes = (claimedList || []).map((c) => c.voucherCode).filter(Boolean);
         const params = new URLSearchParams();
         if (effectivePhone) {
           params.set('phone', effectivePhone);
@@ -654,6 +655,57 @@ function CustomerPortalContent() {
         }
         if (currentName && currentName !== 'Valued Guest' && currentName !== 'Aarav Sharma') {
           params.set('name', currentName);
+        }
+        if (localCodes.length > 0) {
+          params.set('voucherCodes', localCodes.join(','));
+        }
+
+        // Fast re-sync status of any existing claimed voucher codes immediately on load
+        if (localCodes.length > 0) {
+          try {
+            fetch(`/api/reward/redeem?codes=${encodeURIComponent(localCodes.join(','))}`)
+              .then((r) => r.json())
+              .then((d) => {
+                if (d.success && Array.isArray(d.claims)) {
+                  const mapped = d.claims.map((sc: any) => ({
+                    id: sc.id,
+                    businessName: sc.business?.name || 'Local Store',
+                    businessSlug: sc.business?.slug || 'store',
+                    rewardTitle: sc.reward_desc || 'Reward',
+                    claimedAt: sc.claimed_at
+                      ? new Date(sc.claimed_at).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })
+                      : 'Recently',
+                    voucherCode: sc.voucher_code || '',
+                    status: (sc.status === 'REDEEMED' ? 'REDEEMED' : 'PENDING') as 'PENDING' | 'REDEEMED',
+                    redeemedAt: sc.redeemed_at,
+                  }));
+
+                  setClaimedRewards((prev) => {
+                    const mergedMap = new Map<string, any>();
+                    (prev || []).forEach((item) => {
+                      const k = item.voucherCode || item.id;
+                      if (k) mergedMap.set(k, item);
+                    });
+                    mapped.forEach((sc: any) => {
+                      const k = sc.voucherCode || sc.id;
+                      const existing = k ? mergedMap.get(k) : null;
+                      mergedMap.set(k || sc.id, { ...existing, ...sc });
+                    });
+                    const merged = Array.from(mergedMap.values());
+                    try {
+                      localStorage.setItem('reva_claimed_rewards', JSON.stringify(merged));
+                    } catch {}
+                    return merged;
+                  });
+                }
+              })
+              .catch(() => {});
+          } catch {}
         }
 
         if (params.toString()) {
@@ -676,6 +728,45 @@ function CustomerPortalContent() {
                 } else {
                   setSelectedPassSlug('');
                 }
+              }
+
+              // Sync live claimed rewards
+              if (sessionData.claimedRewards && Array.isArray(sessionData.claimedRewards)) {
+                const mapped = sessionData.claimedRewards.map((sc: any) => ({
+                  id: sc.id,
+                  businessName: sc.business?.name || 'Local Store',
+                  businessSlug: sc.business?.slug || 'store',
+                  rewardTitle: sc.reward_desc || 'Reward',
+                  claimedAt: sc.claimed_at
+                    ? new Date(sc.claimed_at).toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })
+                    : 'Recently',
+                  voucherCode: sc.voucher_code || '',
+                  status: (sc.status === 'REDEEMED' ? 'REDEEMED' : 'PENDING') as 'PENDING' | 'REDEEMED',
+                  redeemedAt: sc.redeemed_at,
+                }));
+
+                setClaimedRewards((prev) => {
+                  const mergedMap = new Map<string, any>();
+                  (prev || []).forEach((item) => {
+                    const k = item.voucherCode || item.id;
+                    if (k) mergedMap.set(k, item);
+                  });
+                  mapped.forEach((sc: any) => {
+                    const k = sc.voucherCode || sc.id;
+                    const existing = k ? mergedMap.get(k) : null;
+                    mergedMap.set(k || sc.id, { ...existing, ...sc });
+                  });
+                  const merged = Array.from(mergedMap.values());
+                  try {
+                    localStorage.setItem('reva_claimed_rewards', JSON.stringify(merged));
+                  } catch {}
+                  return merged;
+                });
               }
 
               // Update Phone: ONLY set if session actually has a valid phone number (10+ digits, no @)
@@ -717,6 +808,64 @@ function CustomerPortalContent() {
       // ignore
     }
   }, []);
+
+  // Fast re-sync when switching to History tab in Customer Hub
+  useEffect(() => {
+    if (rewardSubTab !== 'history') return;
+    let localCodes: string[] = [];
+    try {
+      const savedClaimed = localStorage.getItem('reva_claimed_rewards');
+      if (savedClaimed) {
+        const parsed = JSON.parse(savedClaimed);
+        if (Array.isArray(parsed)) localCodes = parsed.map((c: any) => c.voucherCode).filter(Boolean);
+      }
+    } catch {}
+
+    if (localCodes.length > 0) {
+      fetch(`/api/reward/redeem?codes=${encodeURIComponent(localCodes.join(','))}`)
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.success && Array.isArray(d.claims)) {
+            const mapped = d.claims.map((sc: any) => ({
+              id: sc.id,
+              businessName: sc.business?.name || 'Local Store',
+              businessSlug: sc.business?.slug || 'store',
+              rewardTitle: sc.reward_desc || 'Reward',
+              claimedAt: sc.claimed_at
+                ? new Date(sc.claimed_at).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })
+                : 'Recently',
+              voucherCode: sc.voucher_code || '',
+              status: (sc.status === 'REDEEMED' ? 'REDEEMED' : 'PENDING') as 'PENDING' | 'REDEEMED',
+              redeemedAt: sc.redeemed_at,
+            }));
+
+            setClaimedRewards((prev) => {
+              const mergedMap = new Map<string, any>();
+              (prev || []).forEach((item) => {
+                const k = item.voucherCode || item.id;
+                if (k) mergedMap.set(k, item);
+              });
+              mapped.forEach((sc: any) => {
+                const k = sc.voucherCode || sc.id;
+                const existing = k ? mergedMap.get(k) : null;
+                mergedMap.set(k || sc.id, { ...existing, ...sc });
+              });
+              const merged = Array.from(mergedMap.values());
+              try {
+                localStorage.setItem('reva_claimed_rewards', JSON.stringify(merged));
+              } catch {}
+              return merged;
+            });
+          }
+        })
+        .catch(() => {});
+    }
+  }, [rewardSubTab]);
 
   // ---------------------------------------------------------------------------
   // Dynamically Derive Unlocked Rewards from User Passes (6/6 stamps or Milestones)

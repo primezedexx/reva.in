@@ -125,6 +125,30 @@ export async function GET(req: NextRequest) {
       : '';
     const effectiveAvatar = matchedCustomers.find((c) => c.avatar_url)?.avatar_url || primaryCustomer?.avatar_url || null;
 
+    // Fetch claimed rewards across all customer memberships + any voucher codes passed
+    const voucherCodesParam = searchParams.get('voucherCodes');
+    const allMembershipIds = uniqueMemberships.map((m) => m.id);
+    const membershipClaimsPromises = allMembershipIds.map((id) => db.getRewardsClaimedForMembership(id));
+    const membershipClaimsResults = await Promise.all(membershipClaimsPromises);
+    const membershipClaims = membershipClaimsResults.flat();
+
+    let codeClaims: any[] = [];
+    if (voucherCodesParam) {
+      const parsedCodes = voucherCodesParam.split(',').map((c) => c.trim()).filter(Boolean);
+      if (parsedCodes.length > 0) {
+        codeClaims = await db.getRewardClaimsByCodes(parsedCodes);
+      }
+    }
+
+    const allClaimsMap = new Map<string, any>();
+    [...codeClaims, ...membershipClaims].forEach((c) => {
+      const key = c.voucher_code || c.id;
+      if (key && !allClaimsMap.has(key)) {
+        allClaimsMap.set(key, c);
+      }
+    });
+    const claimedRewards = Array.from(allClaimsMap.values());
+
     return NextResponse.json({
       success: true,
       customer: {
@@ -135,6 +159,7 @@ export async function GET(req: NextRequest) {
         avatar_url: effectiveAvatar,
       },
       passes,
+      claimedRewards,
       phone: effectivePhone,
       email: effectiveEmail,
       avatar_url: effectiveAvatar,
@@ -153,7 +178,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { businessSlug, phone, name, email, userId } = await req.json();
+    const { businessSlug, phone, name, email, userId, voucherCodes } = await req.json();
 
     if (!businessSlug || (!phone && !email)) {
       return NextResponse.json(
@@ -181,6 +206,22 @@ export async function POST(req: NextRequest) {
 
     const membership = await db.createOrGetMembership(business.id, customer.id);
 
+    // Fetch live claimed rewards for this membership
+    const membershipClaims = await db.getRewardsClaimedForMembership(membership.id);
+    let codeClaims: any[] = [];
+    if (Array.isArray(voucherCodes) && voucherCodes.length > 0) {
+      codeClaims = await db.getRewardClaimsByCodes(voucherCodes);
+    }
+
+    const allClaimsMap = new Map<string, any>();
+    [...codeClaims, ...membershipClaims].forEach((c) => {
+      const key = c.voucher_code || c.id;
+      if (key && !allClaimsMap.has(key)) {
+        allClaimsMap.set(key, c);
+      }
+    });
+    const claimedRewards = Array.from(allClaimsMap.values());
+
     return NextResponse.json(
       {
         success: true,
@@ -192,6 +233,7 @@ export async function POST(req: NextRequest) {
             : '',
         },
         membership,
+        claimedRewards,
       },
       {
         headers: {

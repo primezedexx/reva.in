@@ -46,6 +46,8 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const businessId = searchParams.get('businessId');
     const code = searchParams.get('code');
+    const codes = searchParams.get('codes');
+    const membershipId = searchParams.get('membershipId');
 
     if (code) {
       const claim = await db.getRewardClaimByCode(code, businessId || undefined);
@@ -55,12 +57,23 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: true, claim });
     }
 
+    if (codes) {
+      const parsedCodes = codes.split(',').map((c) => c.trim()).filter(Boolean);
+      const claims = await db.getRewardClaimsByCodes(parsedCodes);
+      return NextResponse.json({ success: true, claims });
+    }
+
+    if (membershipId) {
+      const claims = await db.getRewardsClaimedForMembership(membershipId);
+      return NextResponse.json({ success: true, claims });
+    }
+
     if (businessId) {
       const claims = await db.getRewardsClaimedForBusiness(businessId);
       return NextResponse.json({ success: true, claims });
     }
 
-    return NextResponse.json({ error: 'businessId or code required' }, { status: 400 });
+    return NextResponse.json({ error: 'businessId, membershipId, code, or codes required' }, { status: 400 });
   } catch (err: unknown) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Failed to fetch rewards' },

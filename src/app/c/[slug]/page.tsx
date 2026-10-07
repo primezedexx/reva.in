@@ -52,6 +52,68 @@ import { resolvePassBackground, resolvePageBackground } from '@/lib/theme-preset
 import { supabase } from '@/lib/supabase';
 import CameraQrScannerModal from '@/components/CameraQrScannerModal';
 
+function syncClaimedRewardsFromServer(
+  serverClaims: any[],
+  currentSlug: string,
+  rawSlugVal: string,
+  defaultBizName: string,
+  setClaimedRewardsState: React.Dispatch<React.SetStateAction<any[]>>
+) {
+  if (!Array.isArray(serverClaims) || serverClaims.length === 0) return;
+
+  const mapped = serverClaims.map((sc: any) => ({
+    id: sc.id,
+    businessName: sc.business?.name || defaultBizName,
+    businessSlug: sc.business?.slug || currentSlug,
+    rewardTitle: sc.reward_desc || 'Reward',
+    claimedAt: sc.claimed_at
+      ? new Date(sc.claimed_at).toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        })
+      : 'Recently',
+    voucherCode: sc.voucher_code || '',
+    status: (sc.status === 'REDEEMED' ? 'REDEEMED' : 'PENDING') as 'PENDING' | 'REDEEMED',
+    redeemedAt: sc.redeemed_at,
+  }));
+
+  setClaimedRewardsState((prev) => {
+    const mergedMap = new Map<string, any>();
+    (prev || []).forEach((item) => {
+      const k = item.voucherCode || item.id;
+      if (k) mergedMap.set(k, item);
+    });
+    mapped.forEach((sc) => {
+      const k = sc.voucherCode || sc.id;
+      const existing = k ? mergedMap.get(k) : null;
+      mergedMap.set(k || sc.id, { ...existing, ...sc });
+    });
+    const mergedList = Array.from(mergedMap.values());
+
+    try {
+      const savedClaimed = localStorage.getItem('reva_claimed_rewards');
+      const fullLocal = savedClaimed ? JSON.parse(savedClaimed) : [];
+      const fullMap = new Map<string, any>();
+      (fullLocal || []).forEach((item: any) => {
+        const k = item.voucherCode || item.id;
+        if (k) fullMap.set(k, item);
+      });
+      mapped.forEach((sc) => {
+        const k = sc.voucherCode || sc.id;
+        const existing = k ? fullMap.get(k) : null;
+        fullMap.set(k || sc.id, { ...existing, ...sc });
+      });
+      localStorage.setItem('reva_claimed_rewards', JSON.stringify(Array.from(fullMap.values())));
+    } catch {}
+
+    return mergedList.filter(
+      (c: any) => c.businessSlug === currentSlug || c.businessSlug === rawSlugVal || !c.businessSlug
+    );
+  });
+}
+
 function CustomerWalletCardContent() {
   const routeParams = useParams();
   const searchParams = useSearchParams();
@@ -182,12 +244,14 @@ function CustomerWalletCardContent() {
           setNameInput(globalName);
         }
 
+        let localVoucherCodes: string[] = [];
         try {
           const savedClaimed = localStorage.getItem('reva_claimed_rewards');
           if (savedClaimed) {
             const parsed = JSON.parse(savedClaimed);
             if (Array.isArray(parsed)) {
               setClaimedRewards(parsed.filter((c: any) => c.businessSlug === slug || c.businessSlug === rawSlug || !c.businessSlug));
+              localVoucherCodes = parsed.map((c: any) => c.voucherCode).filter(Boolean);
             }
           }
         } catch {}
@@ -214,6 +278,25 @@ function CustomerWalletCardContent() {
           return;
         }
 
+        // Fast re-sync status of any existing claimed voucher codes
+        if (localVoucherCodes.length > 0) {
+          try {
+            const codesRes = await fetch(`/api/reward/redeem?codes=${encodeURIComponent(localVoucherCodes.join(','))}`);
+            if (codesRes.ok) {
+              const codesData = await codesRes.json();
+              if (codesData.success && Array.isArray(codesData.claims) && isMounted) {
+                syncClaimedRewardsFromServer(
+                  codesData.claims,
+                  slug,
+                  rawSlug,
+                  bizData?.business?.name || 'Store',
+                  setClaimedRewards
+                );
+              }
+            }
+          } catch {}
+        }
+
         // Check if customer already has a recognized phone on this device
         const rawEmail = globalEmail || localStorage.getItem('reva_customer_email') || null;
         const authEmail = (rawEmail && !rawEmail.includes('primezedexx') && !rawEmail.includes('owner') && !rawEmail.endsWith('@reva.in')) ? rawEmail : null;
@@ -230,6 +313,7 @@ function CustomerWalletCardContent() {
                 phone: effectivePhone || undefined,
                 email: authEmail || undefined,
                 name: globalName && globalName !== 'Valued Guest' && globalName !== 'Aarav Sharma' ? globalName : undefined,
+                voucherCodes: localVoucherCodes,
               }),
             });
             if (sessionRes.ok) {
@@ -238,6 +322,17 @@ function CustomerWalletCardContent() {
                 setCustomer(sessData.customer);
                 setMembership(sessData.membership);
                 setIsRegistered(true);
+
+                if (sessData.claimedRewards && Array.isArray(sessData.claimedRewards)) {
+                  syncClaimedRewardsFromServer(
+                    sessData.claimedRewards,
+                    slug,
+                    rawSlug,
+                    bizData?.business?.name || 'Store',
+                    setClaimedRewards
+                  );
+                }
+
                 try {
                   localStorage.setItem(`reva_mem_${slug}`, JSON.stringify(sessData.membership));
                   localStorage.setItem(`reva_phone_${slug}`, sessData.customer?.phone || effectivePhone);
@@ -276,12 +371,21 @@ function CustomerWalletCardContent() {
     };
   }, [slug, rawSlug, prefillPhone, isTestMode, retryCount]);
 
-  // 2. Real-Time Live Sync: Polling for Cashier Stamp Punches & Store Customization
+  // 2. Real-Time Live Sync: Polling for Cashier Stamp Punches & Store Customization & Reward Redemption Status
   useEffect(() => {
     if (!isRegistered || !customer || !business) return;
 
     const interval = setInterval(async () => {
       try {
+        let currentVoucherCodes: string[] = [];
+        try {
+          const sc = localStorage.getItem('reva_claimed_rewards');
+          if (sc) {
+            const p = JSON.parse(sc);
+            if (Array.isArray(p)) currentVoucherCodes = p.map((c: any) => c.voucherCode).filter(Boolean);
+          }
+        } catch {}
+
         const res = await fetch('/api/customer/session', {
           method: 'POST',
           headers: {
@@ -291,6 +395,7 @@ function CustomerWalletCardContent() {
           body: JSON.stringify({
             businessSlug: slug,
             phone: customer.phone,
+            voucherCodes: currentVoucherCodes,
           }),
         });
         const data = await res.json();
@@ -298,6 +403,16 @@ function CustomerWalletCardContent() {
           // Sync any store customization updates live
           if (data.business) {
             setBusiness(data.business);
+          }
+          // Sync live reward verification status (changes PENDING -> REDEEMED instantly without reload)
+          if (data.claimedRewards && Array.isArray(data.claimedRewards)) {
+            syncClaimedRewardsFromServer(
+              data.claimedRewards,
+              slug,
+              rawSlug,
+              business.name,
+              setClaimedRewards
+            );
           }
           if (data.membership) {
             // Check if stamps were incremented by cashier behind the counter
@@ -328,7 +443,37 @@ function CustomerWalletCardContent() {
     }, 1500);
 
     return () => clearInterval(interval);
-  }, [isRegistered, customer, business, slug]);
+  }, [isRegistered, customer, business, slug, rawSlug]);
+
+  // 2b. Fast re-sync when switching to History tab
+  useEffect(() => {
+    if (rewardSubTab !== 'history') return;
+    let localVoucherCodes: string[] = [];
+    try {
+      const savedClaimed = localStorage.getItem('reva_claimed_rewards');
+      if (savedClaimed) {
+        const parsed = JSON.parse(savedClaimed);
+        if (Array.isArray(parsed)) localVoucherCodes = parsed.map((c: any) => c.voucherCode).filter(Boolean);
+      }
+    } catch {}
+
+    if (localVoucherCodes.length > 0) {
+      fetch(`/api/reward/redeem?codes=${encodeURIComponent(localVoucherCodes.join(','))}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success && Array.isArray(data.claims)) {
+            syncClaimedRewardsFromServer(
+              data.claims,
+              slug,
+              rawSlug,
+              business?.name || 'Store',
+              setClaimedRewards
+            );
+          }
+        })
+        .catch(() => {});
+    }
+  }, [rewardSubTab, slug, rawSlug, business?.name]);
 
   // Authenticate / Register Customer in 1 Tap
   async function authenticateCustomer(phone: string, businessId?: string, name?: string) {
@@ -336,6 +481,15 @@ function CustomerWalletCardContent() {
       setIsSubmitting(true);
       const rawEmail = localStorage.getItem('reva_customer_email') || null;
       const authEmail = (rawEmail && !rawEmail.includes('primezedexx') && !rawEmail.includes('owner') && !rawEmail.endsWith('@reva.in')) ? rawEmail : undefined;
+
+      let localVoucherCodes: string[] = [];
+      try {
+        const sc = localStorage.getItem('reva_claimed_rewards');
+        if (sc) {
+          const p = JSON.parse(sc);
+          if (Array.isArray(p)) localVoucherCodes = p.map((c: any) => c.voucherCode).filter(Boolean);
+        }
+      } catch {}
 
       const res = await fetch('/api/customer/session', {
         method: 'POST',
@@ -345,6 +499,7 @@ function CustomerWalletCardContent() {
           phone,
           name: name || undefined,
           email: authEmail || undefined,
+          voucherCodes: localVoucherCodes,
         }),
       });
       const data = await res.json();
@@ -352,6 +507,16 @@ function CustomerWalletCardContent() {
         setCustomer(data.customer);
         setMembership(data.membership);
         setIsRegistered(true);
+
+        if (data.claimedRewards && Array.isArray(data.claimedRewards)) {
+          syncClaimedRewardsFromServer(
+            data.claimedRewards,
+            slug,
+            rawSlug,
+            business?.name || 'Store',
+            setClaimedRewards
+          );
+        }
         localStorage.setItem(`reva_mem_${slug}`, JSON.stringify(data.membership));
         localStorage.setItem(`reva_phone_${slug}`, phone);
         localStorage.setItem('reva_customer_phone', phone);
