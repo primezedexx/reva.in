@@ -121,6 +121,7 @@ function formatRedeemedDate(isoStr?: string) {
   }
 }
 import { supabase, signOutUser } from '@/lib/supabase';
+import { authFetch } from '@/lib/api-client';
 import { openRazorpayCheckout } from '@/lib/razorpay-client';
 import BusinessSetupModal from '@/components/BusinessSetupModal';
 import SettingsSection from '@/components/SettingsSection';
@@ -437,7 +438,7 @@ function OwnerDashboardContent() {
       params.set('_t', Date.now().toString());
 
       const url = `/api/dashboard${params.toString() ? `?${params.toString()}` : ''}`;
-      const res = await fetch(url, {
+      const res = await authFetch(url, {
         cache: 'no-store',
         headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' },
       });
@@ -572,7 +573,7 @@ function OwnerDashboardContent() {
             setShowSetupModal(false);
             // If locally marked done but DB is not synced, update DB quietly
             if (isLocallyDone && !active.is_setup_completed && active.id) {
-              fetch(`/api/businesses/${active.id}`, {
+              authFetch(`/api/businesses/${active.id}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ is_setup_completed: true }),
@@ -697,7 +698,7 @@ function OwnerDashboardContent() {
         };
       });
 
-      const res = await fetch(`/api/businesses/${selectedBusiness.id}`, {
+      const res = await authFetch(`/api/businesses/${selectedBusiness.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -807,7 +808,7 @@ function OwnerDashboardContent() {
     try {
       setIsRunningWinback(true);
       sound.playClick();
-      const res = await fetch('/api/winback/run', {
+      const res = await authFetch('/api/winback/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -846,7 +847,7 @@ function OwnerDashboardContent() {
       sound.playStampPop();
 
       const spend = parseFloat(counterSpendAmount) || selectedBusiness.avg_spend_per_visit || 250;
-      const res = await fetch('/api/stamp', {
+      const res = await authFetch('/api/stamp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -904,7 +905,7 @@ function OwnerDashboardContent() {
       sound.playRewardFanfare();
       confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } });
 
-      const res = await fetch('/api/cashier', {
+      const res = await authFetch('/api/cashier', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -943,7 +944,7 @@ function OwnerDashboardContent() {
     try {
       setIsVerifyingReward(true);
       sound.playClick();
-      const res = await fetch('/api/reward/verify', {
+      const res = await authFetch('/api/reward/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -992,7 +993,7 @@ function OwnerDashboardContent() {
     try {
       setIsConfirmingRedemption(true);
       sound.playClick();
-      const res = await fetch('/api/reward/verify', {
+      const res = await authFetch('/api/reward/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1047,7 +1048,7 @@ function OwnerDashboardContent() {
       sound.playStampPop();
 
       const spend = parseFloat(counterSpendAmount) || selectedBusiness.avg_spend_per_visit || 250;
-      const res = await fetch('/api/stamp', {
+      const res = await authFetch('/api/stamp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1149,7 +1150,7 @@ function OwnerDashboardContent() {
     try {
       setIsUploadingStoreImage(true);
       sound.playStampPop();
-      const res = await fetch(`/api/businesses/${selectedBusiness.slug}`, {
+      const res = await authFetch(`/api/businesses/${selectedBusiness.slug}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1183,7 +1184,7 @@ function OwnerDashboardContent() {
       const trimmedPhone = settingsPhone.trim();
       const isCurrentPhoneVerified = Boolean(trimmedPhone);
 
-      const res = await fetch(`/api/businesses/${selectedBusiness.slug}`, {
+      const res = await authFetch(`/api/businesses/${selectedBusiness.slug}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1246,7 +1247,7 @@ function OwnerDashboardContent() {
 
     try {
       if (selectedBusiness) {
-        const updateRes = await fetch(`/api/businesses/${selectedBusiness.slug}`, {
+        const updateRes = await authFetch(`/api/businesses/${selectedBusiness.slug}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1301,7 +1302,7 @@ function OwnerDashboardContent() {
         welcome_badge: settingsBadge1.trim() || currentTheme.welcome_badge,
       };
 
-      const res = await fetch(`/api/businesses/${selectedBusiness.slug}`, {
+      const res = await authFetch(`/api/businesses/${selectedBusiness.slug}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1381,7 +1382,7 @@ function OwnerDashboardContent() {
         });
       }
 
-      const res = await fetch(`/api/businesses/${selectedBusiness.slug}`, {
+      const res = await authFetch(`/api/businesses/${selectedBusiness.slug}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1464,7 +1465,7 @@ function OwnerDashboardContent() {
         auto_winback_enabled: winbackVal,
       };
 
-      await fetch(`/api/businesses/${selectedBusiness.slug}`, {
+      await authFetch(`/api/businesses/${selectedBusiness.slug}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1502,7 +1503,7 @@ function OwnerDashboardContent() {
       const existingOffers = selectedBusiness.active_offers || [];
       const updatedOffers = [...existingOffers, newOffer].sort((a, b) => (a.stamps_needed || 0) - (b.stamps_needed || 0));
 
-      const res = await fetch(`/api/businesses/${selectedBusiness.slug}`, {
+      const res = await authFetch(`/api/businesses/${selectedBusiness.slug}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1565,7 +1566,7 @@ function OwnerDashboardContent() {
         return o;
       }).sort((a, b) => (a.stamps_needed || 0) - (b.stamps_needed || 0));
 
-      const res = await fetch(`/api/businesses/${selectedBusiness.slug}`, {
+      const res = await authFetch(`/api/businesses/${selectedBusiness.slug}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1599,7 +1600,7 @@ function OwnerDashboardContent() {
       const existingOffers = selectedBusiness.active_offers || [];
       const updatedOffers = existingOffers.filter((o) => o.id !== offerId);
 
-      const res = await fetch(`/api/businesses/${selectedBusiness.slug}`, {
+      const res = await authFetch(`/api/businesses/${selectedBusiness.slug}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1625,7 +1626,7 @@ function OwnerDashboardContent() {
     if (!confirm('Are you sure you want to remove this customer record?')) return;
     try {
       sound.playClick();
-      const res = await fetch(`/api/memberships/${membershipId}`, {
+      const res = await authFetch(`/api/memberships/${membershipId}`, {
         method: 'DELETE',
       });
       const data = await res.json();
@@ -1686,7 +1687,7 @@ function OwnerDashboardContent() {
       }
 
       // 3. Log to database so it reflects in dashboard audit trail
-      await fetch('/api/whatsapp/logs', {
+      await authFetch('/api/whatsapp/logs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1718,7 +1719,7 @@ function OwnerDashboardContent() {
     }
 
     try {
-      await fetch('/api/whatsapp/logs', {
+      await authFetch('/api/whatsapp/logs', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: logId, status: nextStatus }),

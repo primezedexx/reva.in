@@ -1,14 +1,25 @@
 // ============================================================================
 // REVA (reva.in) — API Route: WhatsApp Logs (/api/whatsapp/logs)
+// Strictly locks access and logging to the verified owner of the business.
 // ============================================================================
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { assertSameOrigin, requireOwner } from '@/lib/auth-server';
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const businessId = searchParams.get('businessId') || undefined;
+
+    if (!businessId) {
+      return NextResponse.json({ error: 'businessId is required' }, { status: 400 });
+    }
+
+    const ownerAuth = await requireOwner(req, businessId);
+    if (!ownerAuth.authorized) {
+      return NextResponse.json({ error: ownerAuth.error }, { status: ownerAuth.status });
+    }
 
     const logs = await db.getWhatsAppLogs(businessId);
 
@@ -26,11 +37,26 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    // 1. Same-Origin Check
+    const originCheck = assertSameOrigin(req);
+    if (!originCheck.allowed) {
+      return NextResponse.json(
+        { error: originCheck.error || 'Cross-origin request rejected' },
+        { status: 403 }
+      );
+    }
+
+    const body = await req.json().catch(() => ({}));
     const { businessId, membershipId, customerId, offerCode, messageBody } = body;
 
     if (!businessId || (!membershipId && !customerId)) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+
+    // 2. Strict Owner Authorization
+    const ownerAuth = await requireOwner(req, businessId);
+    if (!ownerAuth.authorized) {
+      return NextResponse.json({ error: ownerAuth.error }, { status: ownerAuth.status });
     }
 
     const membership = membershipId ? await db.getMembershipById(membershipId) : null;
@@ -66,7 +92,15 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const body = await req.json();
+    const originCheck = assertSameOrigin(req);
+    if (!originCheck.allowed) {
+      return NextResponse.json(
+        { error: originCheck.error || 'Cross-origin request rejected' },
+        { status: 403 }
+      );
+    }
+
+    const body = await req.json().catch(() => ({}));
     const { id, status } = body;
 
     if (!id || !status) {
@@ -89,4 +123,3 @@ export async function PATCH(req: NextRequest) {
     );
   }
 }
-

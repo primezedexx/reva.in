@@ -35,6 +35,7 @@ import {
 } from 'lucide-react';
 import { Business, Customer, Membership, Visit } from '@/types/database';
 import { sound } from '@/lib/sound';
+import { authFetch } from '@/lib/api-client';
 
 interface GuestMembership extends Membership {
   customer?: Customer;
@@ -82,7 +83,7 @@ function CashierTerminalContent() {
   const loadTerminalData = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch(`/api/cashier?slug=${selectedSlug}`, { cache: 'no-store' });
+      const res = await authFetch(`/api/cashier?slug=${selectedSlug}`, { cache: 'no-store' });
       const data = await res.json();
       if (data.success) {
         setBusiness(data.business);
@@ -115,7 +116,7 @@ function CashierTerminalContent() {
     const timer = setTimeout(async () => {
       try {
         setIsSearching(true);
-        const res = await fetch(`/api/cashier?slug=${selectedSlug}&q=${encodeURIComponent(searchQuery)}`);
+        const res = await authFetch(`/api/cashier?slug=${selectedSlug}&q=${encodeURIComponent(searchQuery)}`);
         const data = await res.json();
         if (data.success) {
           setSearchResults(data.searchResults || []);
@@ -167,7 +168,7 @@ function CashierTerminalContent() {
         payload.membershipId = selectedMember.id;
       }
 
-      const res = await fetch('/api/cashier', {
+      const res = await authFetch('/api/cashier', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -217,7 +218,7 @@ function CashierTerminalContent() {
       setIsSubmitting(true);
       sound.playRewardFanfare();
 
-      const res = await fetch('/api/cashier', {
+      const res = await authFetch('/api/cashier', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

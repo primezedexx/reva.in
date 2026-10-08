@@ -1,21 +1,43 @@
 // ============================================================================
 // REVA (reva.in) — API Route: Auth Sync & Provisioning (/api/auth/sync)
-// Ensures Google SSO & Auth users have their owner profile and store initialized
+// Locks provisioning strictly to verified session user (never trust client userId).
 // ============================================================================
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { db } from '@/lib/db';
+import { assertSameOrigin, getAuthUser } from '@/lib/auth-server';
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId, email, name } = await req.json();
+    // 1. Same-Origin Check
+    const originCheck = assertSameOrigin(req);
+    if (!originCheck.allowed) {
+      return NextResponse.json(
+        { error: originCheck.error || 'Cross-origin request rejected' },
+        { status: 403 }
+      );
+    }
+
+    // 2. Strict Session Authentication: extract verified user from Supabase session
+    const auth = await getAuthUser(req);
+    if (!auth) {
+      return NextResponse.json(
+        { error: 'Authentication required. Please log in.' },
+        { status: 401 }
+      );
+    }
+
+    const userId = auth.user.id;
+    const body = await req.json().catch(() => ({}));
+    const email = auth.user.email || body.email;
+    const name = body.name || auth.user.user_metadata?.name;
 
     if (!userId || !email) {
       return NextResponse.json({ error: 'Missing userId or email' }, { status: 400 });
     }
 
-    // 1. Check if owner already exists
+    // 3. Check if owner already exists
     let owner = await db.getOwnerByUserId(userId);
     let business = null;
 
@@ -27,7 +49,7 @@ export async function POST(req: NextRequest) {
       business = await db.getBusinessByOwnerId(userId);
     }
 
-    // 2. If no business or owner exists for this authenticated user, provision one!
+    // 4. If no business exists for this authenticated user, provision one with 30-day trial!
     if (!business) {
       const displayName = name || email.split('@')[0] || 'My';
       const cleanName = displayName.replace(/[^a-zA-Z0-9\s]/g, '').trim();

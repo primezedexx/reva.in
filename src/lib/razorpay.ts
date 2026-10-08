@@ -266,7 +266,7 @@ export async function createSubscriptionOrder(params: {
 }
 
 /**
- * Verifies Razorpay payment signature
+ * Verifies Razorpay payment signature using timingSafeEqual
  */
 export function verifyRazorpaySignature(params: {
   orderId: string;
@@ -276,16 +276,40 @@ export function verifyRazorpaySignature(params: {
   const { orderId, paymentId, signature } = params;
   const secret = process.env.RAZORPAY_KEY_SECRET;
 
-  if (!secret) {
-    console.error('RAZORPAY_KEY_SECRET is not configured.');
+  if (!secret || !signature || !orderId || !paymentId) {
+    console.error('Signature verification failed: missing secret or parameters.');
     return false;
   }
 
-  const body = `${orderId}|${paymentId}`;
-  const expectedSignature = crypto
-    .createHmac('sha256', secret)
-    .update(body.toString())
-    .digest('hex');
+  try {
+    const body = `${orderId}|${paymentId}`;
+    const expectedSignature = crypto
+      .createHmac('sha256', secret)
+      .update(body)
+      .digest('hex');
 
-  return expectedSignature === signature;
+    const expectedBuf = Buffer.from(expectedSignature, 'utf8');
+    const actualBuf = Buffer.from(signature, 'utf8');
+
+    if (expectedBuf.length !== actualBuf.length) {
+      return false;
+    }
+
+    return crypto.timingSafeEqual(expectedBuf, actualBuf);
+  } catch (err) {
+    console.error('Signature verification exception:', err);
+    return false;
+  }
 }
+
+/**
+ * Fetches verified payment entity from Razorpay REST API
+ */
+export async function fetchRazorpayPayment(paymentId: string) {
+  const razorpay = getRazorpayClient();
+  if (!razorpay) {
+    throw new Error('Razorpay credentials not configured.');
+  }
+  return await (razorpay.payments as any).fetch(paymentId);
+}
+

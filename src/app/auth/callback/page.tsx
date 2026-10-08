@@ -9,6 +9,7 @@ import React, { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { Sparkles, Loader2, AlertCircle } from 'lucide-react';
+import { authFetch } from '@/lib/api-client';
 
 function AuthCallbackContent() {
   const router = useRouter();
@@ -101,7 +102,7 @@ function AuthCallbackContent() {
         const phoneOrId = userPhone || userEmail || user.id;
 
         try {
-          await fetch('/api/customer/auth', {
+          await authFetch('/api/customer/auth', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -125,7 +126,7 @@ function AuthCallbackContent() {
       } else {
         // Business owner sync
         try {
-          const syncRes = await fetch('/api/auth/sync', {
+          const syncRes = await authFetch('/api/auth/sync', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

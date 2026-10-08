@@ -1,18 +1,43 @@
 // ============================================================================
 // REVA (reva.in) — API Route: Scan & Stamp (/api/stamp)
-// Supports QR Scan (with 24-hour single-claim cooldown) & Cashier/Counter bypass
+// Supports QR Scan (with 24-hour single-claim cooldown) & Cashier/Counter verification
+// Hardened with origin defense, rate limiting, and merchant authorization for staff actions.
 // ============================================================================
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { supabaseAdmin } from '@/lib/supabase';
+import { assertSameOrigin, requireOwner } from '@/lib/auth-server';
+import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
 // In-memory debounce lock to prevent rapid concurrent double-stamping (5s per membership)
 const recentStampLock = new Map<string, number>();
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    // 1. Same-Origin Check (CSRF Protection)
+    const originCheck = assertSameOrigin(req);
+    if (!originCheck.allowed) {
+      return NextResponse.json(
+        { error: originCheck.error || 'Cross-origin request rejected' },
+        { status: 403 }
+      );
+    }
+
+    // 2. Rate Limiting (max 30 requests/min per IP)
+    const clientIp = getClientIp(req);
+    const rateCheck = await checkRateLimit(`stamp:${clientIp}`, 30, 60);
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        { error: 'Too many stamp requests. Please wait a moment.' },
+        {
+          status: 429,
+          headers: { 'Retry-After': String(rateCheck.retryAfterSeconds) },
+        }
+      );
+    }
+
+    const body = await req.json().catch(() => ({}));
     const {
       businessId: explicitBusinessId,
       slug,
@@ -54,6 +79,24 @@ export async function POST(req: NextRequest) {
       targetBusiness = await db.getBusinessById(businessId);
     }
 
+    if (!targetBusiness) {
+      return NextResponse.json({ error: 'Business not found' }, { status: 404 });
+    }
+
+    const isQrScan = source === 'qr_scan';
+
+    // 3. Authorization Check:
+    // If this is a cashier or counter staff manual stamp, require verified store owner authentication
+    if (!isQrScan) {
+      const ownerAuth = await requireOwner(req, businessId);
+      if (!ownerAuth.authorized) {
+        return NextResponse.json({ error: ownerAuth.error }, { status: ownerAuth.status });
+      }
+    }
+
+    // Bound stamps awarded safely between 1 and 5
+    const safeStampAwarded = Math.min(5, Math.max(1, Number(stampAwarded) || 1));
+
     let targetMemId = explicitMemId;
 
     // If phone is provided, resolve or create customer & membership
@@ -75,12 +118,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Membership not found' }, { status: 404 });
     }
 
-    const isQrScan = source === 'qr_scan';
-
     // 24-Hour Cooldown Verification for Self-Serve QR Scans:
     // CROSS-PASS 24-HOUR RESTRICTION:
     // Check latest QR stamp timestamp across ALL passes/memberships belonging to this customer.
-    // Switching or changing loyalty passes CANNOT bypass the existing 24-hour restriction!
     let lastClaimIso = currentMem.last_qr_stamp_at;
     if (currentMem.customer_id) {
       try {
@@ -168,7 +208,7 @@ export async function POST(req: NextRequest) {
       if (!tierData.passes[rewardId]) {
         tierData.passes[rewardId] = { stamps: 0, started_at: new Date().toISOString() };
       }
-      tierData.passes[rewardId].stamps = (tierData.passes[rewardId].stamps || 0) + stampAwarded;
+      tierData.passes[rewardId].stamps = (tierData.passes[rewardId].stamps || 0) + safeStampAwarded;
       tierData.passes[rewardId].last_stamp_at = new Date().toISOString();
       extraPassStamps = tierData.passes[rewardId].stamps;
       extraRewardUnlocked = extraPassStamps >= extraPassTotalStamps;
@@ -188,7 +228,7 @@ export async function POST(req: NextRequest) {
       targetMemId,
       businessId,
       spendAmount,
-      isAdditionalReward ? 0 : stampAwarded, // Only increment primary pass stamps if stamping primary pass
+      isAdditionalReward ? 0 : safeStampAwarded,
       staffNote || defaultNote,
       isQrScan
     );

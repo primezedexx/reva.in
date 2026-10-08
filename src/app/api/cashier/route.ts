@@ -1,10 +1,12 @@
 // ============================================================================
 // REVA (reva.in) — API Route: Cashier Verification & Stamp Tool (/api/cashier)
-// Allows counter staff to look up guests, verify order bill value, and award stamps
+// Allows counter staff to look up guests, verify order bill value, and award stamps.
+// Strictly requires authenticated merchant owner or cashier staff of this store.
 // ============================================================================
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { assertSameOrigin, requireOwner } from '@/lib/auth-server';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -12,35 +14,42 @@ export const revalidate = 0;
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const businessSlug = searchParams.get('slug') || 'boba-brew';
+    const businessSlug = searchParams.get('slug') || searchParams.get('businessId');
     const query = searchParams.get('q') || '';
 
-    const business = await db.getBusinessBySlug(businessSlug);
-    if (!business) {
-      return NextResponse.json({ error: 'Store not found' }, { status: 404 });
+    if (!businessSlug) {
+      return NextResponse.json({ error: 'Store slug or ID is required' }, { status: 400 });
     }
 
-    const allBusinesses = await db.getBusinesses();
+    // Require merchant owner/cashier access to this business
+    const ownerAuth = await requireOwner(req, businessSlug);
+    if (!ownerAuth.authorized) {
+      return NextResponse.json({ error: ownerAuth.error }, { status: ownerAuth.status });
+    }
+
+    const business = ownerAuth.business!;
     const recentGuests = await db.getRecentGuests(business.id, 10);
     const todayVisits = await db.getVisitsForBusiness(business.id, 15);
-    
+
     let searchResults: Array<unknown> = [];
     if (query.trim()) {
       searchResults = await db.searchMemberships(business.id, query.trim());
     }
 
-    return NextResponse.json({
-      success: true,
-      business,
-      allBusinesses: allBusinesses.map((b) => ({ id: b.id, name: b.name, slug: b.slug })),
-      recentGuests,
-      todayVisits,
-      searchResults,
-    }, {
-      headers: {
-        'Cache-Control': 'no-store, no-cache, must-revalidate',
+    return NextResponse.json(
+      {
+        success: true,
+        business,
+        recentGuests,
+        todayVisits,
+        searchResults,
       },
-    });
+      {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+        },
+      }
+    );
   } catch (err: unknown) {
     console.error('Error in GET /api/cashier:', err);
     return NextResponse.json(
@@ -52,7 +61,16 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    // 1. Same-Origin Check
+    const originCheck = assertSameOrigin(req);
+    if (!originCheck.allowed) {
+      return NextResponse.json(
+        { error: originCheck.error || 'Cross-origin request rejected' },
+        { status: 403 }
+      );
+    }
+
+    const body = await req.json().catch(() => ({}));
     const {
       businessId,
       phone,
@@ -68,10 +86,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Business ID is required' }, { status: 400 });
     }
 
-    const business = await db.getBusinessById(businessId);
-    if (!business) {
-      return NextResponse.json({ error: 'Business not found' }, { status: 404 });
+    // 2. Require merchant owner/cashier access to this business
+    const ownerAuth = await requireOwner(req, businessId);
+    if (!ownerAuth.authorized) {
+      return NextResponse.json({ error: ownerAuth.error }, { status: ownerAuth.status });
     }
+
+    const business = ownerAuth.business!;
 
     let targetMemId = explicitMemId;
 
@@ -93,7 +114,7 @@ export async function POST(req: NextRequest) {
     if (action === 'redeem') {
       const rewardDesc = business.reward_rule.reward_title || 'Free Milestone Reward';
       const claim = await db.claimReward(targetMemId, businessId, rewardDesc, 'cashier_counter');
-      
+
       const updatedMem = await db.getMembershipById(targetMemId);
       const customer = updatedMem ? await db.getCustomerById(updatedMem.customer_id) : null;
 
@@ -109,7 +130,8 @@ export async function POST(req: NextRequest) {
     // Action 2: Award Verified Stamp with Minimum Bill Validation
     const minBill = business.reward_rule.min_order_for_stamp || business.min_order_for_stamp || 150;
     const billValue = spendAmount ? parseFloat(spendAmount) : minBill;
-    const stampCount = stampAwarded ? Math.max(1, parseInt(stampAwarded, 10)) : 1;
+    const parsedStamps = stampAwarded ? Math.max(1, parseInt(stampAwarded, 10)) : 1;
+    const stampCount = Math.min(5, Math.max(1, parsedStamps)); // Bounded 1 to 5
 
     // Minimum bill verification check
     if (spendAmount !== undefined && billValue < minBill) {

@@ -1,38 +1,55 @@
 // ============================================================================
 // REVA (reva.in) — API Route: Customer Session & Membership Lookup
+// Hardened with rate limiting, signed customer session cookies, and safe customer data.
 // ============================================================================
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { supabaseAdmin } from '@/lib/supabase';
+import { getCustomerSession, setCustomerSessionCookie } from '@/lib/auth-server';
+import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export async function GET(req: NextRequest) {
   try {
-    const { searchParams } = new URL(req.url);
-    const email = searchParams.get('email');
-    const phone = searchParams.get('phone');
-    const userId = searchParams.get('userId');
-    const name = searchParams.get('name');
-
-    const cleanPhone = phone && phone !== '+91 98765 43210' && phone !== '9876543210' ? phone.trim() : '';
-    const isIgnoredEmail = email && (email.includes('owner') || email.includes('primezedexx') || email.endsWith('@reva.in'));
-    const cleanEmail = email && !isIgnoredEmail ? email.trim().toLowerCase() : '';
-    const cleanName = name && name !== 'Valued Guest' && name !== 'Aarav Sharma' ? name.trim() : '';
-    const searchIdentifier = cleanPhone || cleanEmail || userId || cleanName;
-
-    if (!searchIdentifier) {
-      return NextResponse.json({ success: true, passes: [], customer: null });
+    // 1. Rate Limiting (max 30 requests/min per IP)
+    const clientIp = getClientIp(req);
+    const rateCheck = await checkRateLimit(`cust_session_get:${clientIp}`, 30, 60);
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        { error: 'Too many requests. Please wait a moment.' },
+        {
+          status: 429,
+          headers: { 'Retry-After': String(rateCheck.retryAfterSeconds) },
+        }
+      );
     }
 
-    // 1. Search for any customer records matching any of the user's identities (phone, email, Google UID, name)
+    const { searchParams } = new URL(req.url);
+    const sessionCookie = getCustomerSession(req);
+    const phoneParam = searchParams.get('phone');
+    const nameParam = searchParams.get('name');
+    const emailParam = searchParams.get('email');
+    const userIdParam = searchParams.get('userId');
+
+    const cleanPhone = (sessionCookie?.phone || phoneParam || '').trim().replace(/\s+/g, '');
+    const cleanName = nameParam && nameParam !== 'Valued Guest' ? nameParam.trim() : '';
+    const cleanEmail = emailParam && !emailParam.includes('owner') && !emailParam.endsWith('@reva.in') ? emailParam.trim().toLowerCase() : '';
+
+    const searchIdentifier = cleanPhone || cleanEmail || userIdParam || cleanName;
+
+    if (!searchIdentifier) {
+      return NextResponse.json({ success: true, passes: [], customer: null, claimedRewards: [] });
+    }
+
+    // 1. Search for customer records matching identity
     const matchedCustomers = await db.findCustomersByAnyIdentity({
-      phone: cleanPhone,
-      email: cleanEmail,
-      userId: userId || undefined,
-      name: cleanName,
+      phone: cleanPhone || undefined,
+      email: cleanEmail || undefined,
+      userId: userIdParam || undefined,
+      name: cleanName || undefined,
     });
 
     let primaryCustomer = matchedCustomers[0] || null;
@@ -41,7 +58,7 @@ export async function GET(req: NextRequest) {
       primaryCustomer = await db.createOrGetCustomer(searchIdentifier, cleanName || undefined, undefined, {
         email: cleanEmail || undefined,
         phone: cleanPhone || undefined,
-        auth_user_id: userId || undefined,
+        auth_user_id: userIdParam || undefined,
         name: cleanName || undefined,
       });
       matchedCustomers.push(primaryCustomer);
@@ -79,7 +96,7 @@ export async function GET(req: NextRequest) {
         card_radius: 'rounded_squircle',
       };
 
-      // 1. Primary pass for this store (e.g. Specialty Beverage)
+      // 1. Primary pass for this store
       passes.push({
         id: `${biz?.slug || 'store'}_primary`,
         rewardId: 'primary',
@@ -164,22 +181,10 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // 3. Resolve unified customer details (real phone, real email, real name, avatar)
-    const realPhoneCustomer = matchedCustomers.find(
-      (c) => c.phone && !c.phone.includes('@') && c.phone.replace(/\D/g, '').length >= 10
-    );
-    const effectivePhone = realPhoneCustomer?.phone || cleanPhone || '';
-
-    const realNameCustomer = matchedCustomers.find(
-      (c) => c.name && c.name !== 'Valued Guest' && c.name !== 'Aarav Sharma'
-    );
-    const effectiveName = realNameCustomer?.name || cleanName || primaryCustomer?.name || 'Valued Guest';
-
-    const customerEmailCandidate = cleanEmail || matchedCustomers.find((c) => c.email && !c.email.includes('primezedexx') && !c.email.includes('owner') && !c.email.endsWith('@reva.in'))?.email || '';
-    const effectiveEmail = (customerEmailCandidate && !customerEmailCandidate.includes('primezedexx') && !customerEmailCandidate.includes('owner') && !customerEmailCandidate.endsWith('@reva.in'))
-      ? customerEmailCandidate
-      : '';
-    const effectiveAvatar = matchedCustomers.find((c) => c.avatar_url)?.avatar_url || primaryCustomer?.avatar_url || null;
+    // 3. Resolve customer details
+    const effectivePhone = cleanPhone || primaryCustomer?.phone || '';
+    const effectiveName = primaryCustomer?.name && primaryCustomer.name !== 'Valued Guest' ? primaryCustomer.name : (cleanName || 'Valued Guest');
+    const effectiveAvatar = primaryCustomer?.avatar_url || null;
 
     // Fetch claimed rewards across all customer memberships + any voucher codes passed
     const voucherCodesParam = searchParams.get('voucherCodes');
@@ -205,25 +210,20 @@ export async function GET(req: NextRequest) {
     });
     const claimedRewards = Array.from(allClaimsMap.values());
 
-    return NextResponse.json(
+    const response = NextResponse.json(
       {
         success: true,
         customer: {
-          ...primaryCustomer,
-          phone: effectivePhone || primaryCustomer?.phone || '',
+          id: primaryCustomer.id,
+          phone: effectivePhone,
           name: effectiveName,
-          email: effectiveEmail,
           avatar_url: effectiveAvatar,
         },
         passes,
         claimedRewards,
         phone: effectivePhone,
-        email: effectiveEmail,
-        avatar_url: effectiveAvatar,
         name: effectiveName,
-        auth_provider: primaryCustomer?.auth_provider || (cleanEmail ? 'google' : 'phone_otp'),
-        last_sign_in_at: primaryCustomer?.last_sign_in_at || new Date().toISOString(),
-        registered_at: primaryCustomer?.registered_at || primaryCustomer?.created_at || new Date().toISOString(),
+        avatar_url: effectiveAvatar,
       },
       {
         headers: {
@@ -233,6 +233,16 @@ export async function GET(req: NextRequest) {
         },
       }
     );
+
+    // Issue signed session cookie if caller has verified phone
+    if (!sessionCookie && effectivePhone) {
+      setCustomerSessionCookie(response, {
+        customerId: primaryCustomer.id,
+        phone: effectivePhone,
+      });
+    }
+
+    return response;
   } catch (err: unknown) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Session lookup failed' },
@@ -250,9 +260,26 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { businessSlug, phone, name, email, userId, voucherCodes, startRewardId } = await req.json();
+    // 1. Rate Limiting (max 20 requests/min per IP)
+    const clientIp = getClientIp(req);
+    const rateCheck = await checkRateLimit(`cust_session_post:${clientIp}`, 20, 60);
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        { error: 'Too many session requests. Please wait a moment.' },
+        {
+          status: 429,
+          headers: { 'Retry-After': String(rateCheck.retryAfterSeconds) },
+        }
+      );
+    }
 
-    if (!businessSlug || (!phone && !email)) {
+    const sessionCookie = getCustomerSession(req);
+    const body = await req.json().catch(() => ({}));
+    const { businessSlug, phone, name, email, userId, voucherCodes, startRewardId } = body;
+
+    const cleanPhone = (sessionCookie?.phone || phone || '').trim().replace(/\s+/g, '');
+
+    if (!businessSlug || (!cleanPhone && !email)) {
       return NextResponse.json(
         { error: 'Business slug and phone or email are required' },
         { status: 400 }
@@ -264,9 +291,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Business not found' }, { status: 404 });
     }
 
-    const cleanPhone = phone && phone !== '+91 98765 43210' && phone !== '9876543210' ? phone.trim() : '';
-    const isIgnoredEmail = email && (email.includes('owner') || email.includes('primezedexx') || email.endsWith('@reva.in'));
-    const cleanEmail = email && !isIgnoredEmail ? email.trim().toLowerCase() : '';
+    const cleanEmail = email && !email.includes('owner') && !email.endsWith('@reva.in') ? email.trim().toLowerCase() : '';
     const cleanName = name && name !== 'Valued Guest' ? name.trim() : '';
 
     const customer = await db.createOrGetCustomer(cleanPhone || cleanEmail, cleanName || undefined, undefined, {
@@ -311,15 +336,15 @@ export async function POST(req: NextRequest) {
     });
     const claimedRewards = Array.from(allClaimsMap.values());
 
-    return NextResponse.json(
+    const res = NextResponse.json(
       {
         success: true,
         business: db.ensureBusinessOffers(business),
         customer: {
-          ...customer,
-          email: (customer.email && !customer.email.includes('primezedexx') && !customer.email.includes('owner') && !customer.email.endsWith('@reva.in'))
-            ? customer.email
-            : '',
+          id: customer.id,
+          name: customer.name || cleanName || 'Valued Guest',
+          phone: cleanPhone,
+          avatar_url: customer.avatar_url || null,
         },
         membership,
         claimedRewards,
@@ -330,6 +355,15 @@ export async function POST(req: NextRequest) {
         },
       }
     );
+
+    if (cleanPhone) {
+      setCustomerSessionCookie(res, {
+        customerId: customer.id,
+        phone: cleanPhone,
+      });
+    }
+
+    return res;
   } catch (err: unknown) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Session failed' },

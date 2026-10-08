@@ -42,6 +42,7 @@ import { sound } from '@/lib/sound';
 import { compressImageFile } from '@/lib/image-compress';
 import PrivacySecurityModal from '@/components/PrivacySecurityModal';
 import CounterQrStandModal from '@/components/CounterQrStandModal';
+import { authFetch } from '@/lib/api-client';
 
 const InstagramIcon = ({ className = 'w-4 h-4' }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -179,7 +180,7 @@ export default function SettingsSection({
     try {
       setIsSaving(true);
       sound.playClick();
-      const res = await fetch(`/api/businesses/${business.slug}`, {
+      const res = await authFetch(`/api/businesses/${business.slug}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -240,7 +241,7 @@ export default function SettingsSection({
         welcome_badge: badge1.trim() || currentTheme.welcome_badge,
       };
 
-      const res = await fetch(`/api/businesses/${business.slug}`, {
+      const res = await authFetch(`/api/businesses/${business.slug}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -312,7 +313,7 @@ export default function SettingsSection({
         auto_winback_enabled: winbackVal,
       };
 
-      await fetch(`/api/businesses/${business.slug}`, {
+      await authFetch(`/api/businesses/${business.slug}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

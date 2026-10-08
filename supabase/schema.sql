@@ -273,3 +273,104 @@ CREATE POLICY "Public whatsapp_logs access" ON public.whatsapp_logs FOR ALL USIN
 
 DROP POLICY IF EXISTS "Public rewards_claimed access" ON public.rewards_claimed;
 CREATE POLICY "Public rewards_claimed access" ON public.rewards_claimed FOR ALL USING (true) WITH CHECK (true);
+
+-- ============================================================================
+-- RATE LIMITING (Distributed Sliding Window)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS public.rate_limits (
+    key text PRIMARY KEY,
+    count integer DEFAULT 1 NOT NULL,
+    reset_at timestamptz NOT NULL
+);
+
+ALTER TABLE public.rate_limits ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public rate_limits access" ON public.rate_limits;
+CREATE POLICY "Public rate_limits access" ON public.rate_limits FOR ALL USING (true) WITH CHECK (true);
+
+-- Atomic sliding window rate limiter RPC
+CREATE OR REPLACE FUNCTION public.check_rate_limit(
+    p_key text,
+    p_limit integer,
+    p_window_seconds integer
+)
+RETURNS TABLE(
+    allowed boolean,
+    remaining integer,
+    reset_at timestamptz,
+    retry_after_seconds integer
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_now timestamptz := clock_timestamp();
+    v_window interval := (p_window_seconds || ' seconds')::interval;
+    v_record record;
+BEGIN
+    INSERT INTO public.rate_limits (key, count, reset_at)
+    VALUES (p_key, 1, v_now + v_window)
+    ON CONFLICT (key) DO UPDATE
+    SET 
+        count = CASE 
+            WHEN rate_limits.reset_at <= v_now THEN 1
+            ELSE rate_limits.count + 1
+        END,
+        reset_at = CASE
+            WHEN rate_limits.reset_at <= v_now THEN v_now + v_window
+            ELSE rate_limits.reset_at
+        END
+    RETURNING rate_limits.count, rate_limits.reset_at INTO v_record;
+
+    IF v_record.count > p_limit THEN
+        RETURN QUERY SELECT
+            false,
+            0,
+            v_record.reset_at,
+            GREATEST(1, CEIL(EXTRACT(EPOCH FROM (v_record.reset_at - v_now)))::integer);
+    ELSE
+        RETURN QUERY SELECT
+            true,
+            GREATEST(0, p_limit - v_record.count),
+            v_record.reset_at,
+            0;
+    END IF;
+END;
+$$;
+
+-- ============================================================================
+-- PAYMENTS & SUBSCRIPTIONS (Razorpay Idempotent Ledger)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS public.payment_orders (
+    id text PRIMARY KEY,
+    business_id uuid REFERENCES public.businesses(id) ON DELETE CASCADE,
+    plan text NOT NULL,
+    amount integer NOT NULL,
+    currency text DEFAULT 'INR' NOT NULL,
+    status text DEFAULT 'created' NOT NULL,
+    created_at timestamptz DEFAULT now() NOT NULL
+);
+
+ALTER TABLE public.payment_orders ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public payment_orders access" ON public.payment_orders;
+CREATE POLICY "Public payment_orders access" ON public.payment_orders FOR ALL USING (true) WITH CHECK (true);
+
+CREATE TABLE IF NOT EXISTS public.payments (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    payment_id text UNIQUE NOT NULL,
+    order_id text,
+    business_id uuid REFERENCES public.businesses(id) ON DELETE CASCADE,
+    plan text NOT NULL,
+    amount integer NOT NULL,
+    currency text DEFAULT 'INR' NOT NULL,
+    status text DEFAULT 'captured' NOT NULL,
+    event_id text UNIQUE,
+    created_at timestamptz DEFAULT now() NOT NULL
+);
+
+ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Public payments access" ON public.payments;
+CREATE POLICY "Public payments access" ON public.payments FOR ALL USING (true) WITH CHECK (true);
+

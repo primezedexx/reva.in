@@ -17,6 +17,26 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 });
 
+// Auto-sync Supabase Auth token to browser cookie for server route verification
+if (typeof window !== 'undefined') {
+  supabase.auth.getSession().then(({ data }) => {
+    if (data?.session?.access_token) {
+      const isSecure = window.location.protocol === 'https:';
+      document.cookie = `sb-access-token=${data.session.access_token}; path=/; max-age=2592000; SameSite=Lax; ${isSecure ? 'Secure;' : ''}`;
+    }
+  }).catch(() => {});
+
+  supabase.auth.onAuthStateChange((event, session) => {
+    if (session?.access_token) {
+      const isSecure = typeof window !== 'undefined' && window.location.protocol === 'https:';
+      document.cookie = `sb-access-token=${session.access_token}; path=/; max-age=2592000; SameSite=Lax; ${isSecure ? 'Secure;' : ''}`;
+    } else if (event === 'SIGNED_OUT') {
+      document.cookie = 'sb-access-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax;';
+    }
+  });
+}
+
+
 // Admin client for backend server routes & API handlers (bypasses RLS)
 export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
   auth: {

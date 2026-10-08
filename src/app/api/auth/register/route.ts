@@ -6,6 +6,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { db } from '@/lib/db';
+import { assertSameOrigin } from '@/lib/auth-server';
+import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
 
 function slugify(text: string): string {
   return text
@@ -21,10 +23,33 @@ function slugify(text: string): string {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    // 1. Same-Origin Check
+    const originCheck = assertSameOrigin(req);
+    if (!originCheck.allowed) {
+      return NextResponse.json(
+        { error: originCheck.error || 'Cross-origin request rejected' },
+        { status: 403 }
+      );
+    }
+
+    // 2. Rate Limiting (max 10 registrations/min per IP)
+    const clientIp = getClientIp(req);
+    const rateCheck = await checkRateLimit(`reg:${clientIp}`, 10, 60);
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        { error: 'Too many registration attempts. Please wait a moment.' },
+        {
+          status: 429,
+          headers: { 'Retry-After': String(rateCheck.retryAfterSeconds) },
+        }
+      );
+    }
+
+    const body = await req.json().catch(() => ({}));
     const { email, password, businessName, category, city, plan } = body;
     const selectedPlan = (plan === 'starter' || plan === 'pro' || plan === 'growth') ? plan : 'growth';
     const trialEndsAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
 
     if (!email || !password || !businessName) {
       return NextResponse.json(

@@ -46,6 +46,7 @@ import {
   resolvePassBackground,
 } from '@/lib/theme-presets';
 import { sound } from '@/lib/sound';
+import { authFetch } from '@/lib/api-client';
 
 interface BusinessSetupModalProps {
   business: Business;
@@ -259,7 +260,7 @@ export default function BusinessSetupModal({
         ],
       };
 
-      const res = await fetch(`/api/businesses/${business.id}`, {
+      const res = await authFetch(`/api/businesses/${business.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
