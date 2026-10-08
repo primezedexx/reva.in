@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { supabaseAdmin } from '@/lib/supabase';
 
 // In-memory debounce lock to prevent rapid concurrent double-stamping (5s per membership)
 const recentStampLock = new Map<string, number>();
@@ -23,6 +24,7 @@ export async function POST(req: NextRequest) {
       stampAwarded = 1,
       staffNote,
       source = 'qr_scan', // 'qr_scan' | 'counter' | 'cashier'
+      rewardId,
     } = body;
 
     let targetBusiness = null;
@@ -75,8 +77,24 @@ export async function POST(req: NextRequest) {
 
     const isQrScan = source === 'qr_scan';
 
-    // 24-Hour Cooldown Verification for Self-Serve QR Scans (Checked ONLY against previous self-serve QR stamps)
-    const lastClaimIso = currentMem.last_qr_stamp_at;
+    // 24-Hour Cooldown Verification for Self-Serve QR Scans:
+    // CROSS-PASS 24-HOUR RESTRICTION:
+    // Check latest QR stamp timestamp across ALL passes/memberships belonging to this customer.
+    // Switching or changing loyalty passes CANNOT bypass the existing 24-hour restriction!
+    let lastClaimIso = currentMem.last_qr_stamp_at;
+    if (currentMem.customer_id) {
+      try {
+        const allCustomerMems = await db.getMembershipsByCustomerId(currentMem.customer_id);
+        for (const m of allCustomerMems) {
+          if (m.last_qr_stamp_at) {
+            if (!lastClaimIso || new Date(m.last_qr_stamp_at).getTime() > new Date(lastClaimIso).getTime()) {
+              lastClaimIso = m.last_qr_stamp_at;
+            }
+          }
+        }
+      } catch {}
+    }
+
     if (isQrScan && lastClaimIso) {
       const lastClaimTime = new Date(lastClaimIso).getTime();
       const now = Date.now();
@@ -128,16 +146,64 @@ export async function POST(req: NextRequest) {
       recentStampLock.set(targetMemId, nowTimestamp);
     }
 
+    // Handle independent pass progress if this is an additional reward pass
+    const isAdditionalReward = Boolean(rewardId && rewardId !== 'primary');
+    let extraPassStamps = 0;
+    let extraPassTotalStamps = targetBusiness?.reward_rule?.stamps_needed || 6;
+    let extraRewardUnlocked = false;
+
+    if (isAdditionalReward) {
+      const targetOffer = (targetBusiness?.active_offers || []).find((o: any) => o.id === rewardId);
+      if (targetOffer) {
+        extraPassTotalStamps = targetOffer.stamps_needed || 6;
+      }
+
+      let tierData: any = {};
+      try {
+        tierData = JSON.parse(currentMem.tier || '{}');
+      } catch {
+        tierData = { tier: currentMem.tier || 'Regular' };
+      }
+      if (!tierData.passes) tierData.passes = {};
+      if (!tierData.passes[rewardId]) {
+        tierData.passes[rewardId] = { stamps: 0, started_at: new Date().toISOString() };
+      }
+      tierData.passes[rewardId].stamps = (tierData.passes[rewardId].stamps || 0) + stampAwarded;
+      tierData.passes[rewardId].last_stamp_at = new Date().toISOString();
+      extraPassStamps = tierData.passes[rewardId].stamps;
+      extraRewardUnlocked = extraPassStamps >= extraPassTotalStamps;
+
+      currentMem.tier = JSON.stringify(tierData);
+      try {
+        await supabaseAdmin.from('memberships').update({ tier: currentMem.tier }).eq('id', targetMemId);
+      } catch {}
+    }
+
     // Record visit & execute stamp trigger
-    const defaultNote = isQrScan ? 'Customer Counter QR Scan' : 'Counter Staff Verified Stamp';
+    const defaultNote = isQrScan
+      ? `Customer Counter QR Scan${rewardId ? ` [Reward: ${rewardId}]` : ''}`
+      : `Counter Staff Verified Stamp${rewardId ? ` [Reward: ${rewardId}]` : ''}`;
+
     const result = await db.recordVisit(
       targetMemId,
       businessId,
       spendAmount,
-      stampAwarded,
+      isAdditionalReward ? 0 : stampAwarded, // Only increment primary pass stamps if stamping primary pass
       staffNote || defaultNote,
       isQrScan
     );
+
+    // Synchronize 24-hour stamp timestamp across ALL memberships of this customer
+    if (isQrScan && currentMem.customer_id) {
+      const nowIso = new Date().toISOString();
+      currentMem.last_qr_stamp_at = nowIso;
+      try {
+        const allCustomerMems = await db.getMembershipsByCustomerId(currentMem.customer_id);
+        for (const m of allCustomerMems) {
+          m.last_qr_stamp_at = nowIso;
+        }
+      } catch {}
+    }
 
     const fullMem = await db.getMembershipById(targetMemId);
     const customer = fullMem ? await db.getCustomerById(fullMem.customer_id) : null;
@@ -145,9 +211,16 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      membership: { ...fullMem, customer, business },
+      membership: {
+        ...fullMem,
+        customer,
+        business,
+        stamps: isAdditionalReward ? extraPassStamps : fullMem?.stamps,
+      },
+      rewardId: rewardId || 'primary',
+      passStamps: isAdditionalReward ? extraPassStamps : fullMem?.stamps,
+      rewardUnlocked: isAdditionalReward ? extraRewardUnlocked : result.rewardUnlocked,
       visit: result.visit,
-      rewardUnlocked: result.rewardUnlocked,
       wasWinBackConverted: result.wasWinBackConverted,
     });
   } catch (err: unknown) {

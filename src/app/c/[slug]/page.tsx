@@ -636,7 +636,16 @@ function CustomerWalletCardContent() {
   }
 
   // 24-Hour QR Cooldown status computation
-  const lastQrTimestamp = membership?.last_qr_stamp_at ? new Date(membership.last_qr_stamp_at).getTime() : 0;
+  let storageLastQr = 0;
+  if (typeof window !== 'undefined') {
+    try {
+      storageLastQr = Number(localStorage.getItem('reva_last_qr_stamp_ts') || 0);
+    } catch {}
+  }
+  const lastQrTimestamp = Math.max(
+    membership?.last_qr_stamp_at ? new Date(membership.last_qr_stamp_at).getTime() : 0,
+    storageLastQr
+  );
   const nowTime = Date.now();
   const COOLDOWN_MS = 24 * 60 * 60 * 1000;
   const timeSinceLastQr = nowTime - lastQrTimestamp;
@@ -692,6 +701,9 @@ function CustomerWalletCardContent() {
       }
 
       if (data.success) {
+        try {
+          localStorage.setItem('reva_last_qr_stamp_ts', String(Date.now()));
+        } catch {}
         setMembership(data.membership);
         setQrClaimSuccessModal({
           isOpen: true,
@@ -820,7 +832,7 @@ function CustomerWalletCardContent() {
 
   const stampsNeeded = business?.reward_rule?.stamps_needed || 6;
   const grandRewardTitle = business?.reward_rule?.reward_title || 'Free Specialty Beverage';
-  const minOrder = business?.reward_rule?.min_order_for_stamp || business?.min_order_for_stamp || 150;
+  const minOrder = business?.reward_rule?.min_order_for_stamp || business?.min_order_for_stamp || 0;
   const currentStamps = membership?.stamps ?? 0;
   const stampsRemaining = Math.max(0, stampsNeeded - currentStamps);
   const isRewardReady = currentStamps >= stampsNeeded;
@@ -1291,12 +1303,7 @@ function CustomerWalletCardContent() {
                       </span>
                     </div>
 
-                    <div
-                      className="grid gap-2.5 sm:gap-3"
-                      style={{
-                        gridTemplateColumns: `repeat(${stampsNeeded <= 6 ? stampsNeeded : 4}, minmax(0, 1fr))`,
-                      }}
-                    >
+                    <div className="flex items-center justify-center flex-wrap gap-2 sm:gap-2.5 py-1 min-h-[58px]">
                       {Array.from({ length: stampsNeeded }).map((_, index) => {
                         const slotNum = index + 1;
                         const isStamped = index < currentStamps;
@@ -1316,7 +1323,7 @@ function CustomerWalletCardContent() {
                                 });
                               }
                             }}
-                            className={`aspect-square rounded-2xl flex flex-col items-center justify-center relative transition-all duration-300 ${
+                            className={`aspect-square rounded-2xl flex flex-col items-center justify-center relative transition-all duration-300 shrink-0 ${
                               isStamped
                                 ? 'bg-white text-slate-950 shadow-lg scale-100 animate-stamp'
                                 : isNext
@@ -1325,6 +1332,10 @@ function CustomerWalletCardContent() {
                                 ? 'border-2 border-dashed border-amber-300/80 bg-amber-400/10 hover:bg-amber-400/20 cursor-pointer active:scale-95'
                                 : 'border-2 border-dashed border-white/30 bg-black/10 opacity-60'
                             }`}
+                            style={{
+                              width: 'clamp(44px, calc((100% - 40px) / 6), 54px)',
+                              height: 'clamp(44px, calc((100% - 40px) / 6), 54px)',
+                            }}
                             title={matchedOffer ? `Milestone: ${matchedOffer.title} (Tap to view details)` : undefined}
                           >
                             {renderStampIconSymbol(stampIcon, isStamped, isRewardSlot || Boolean(matchedOffer))}

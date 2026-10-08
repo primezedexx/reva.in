@@ -81,7 +81,7 @@ export async function GET(req: NextRequest) {
           winback_min_days: 5,
           winback_offer_text: 'Complimentary Belgian Waffle or treat with your next visit',
           plan: 'growth',
-          trial_ends_at: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+          trial_ends_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
           subscription_status: 'trialing',
           trial_active: true,
           active_offers: [

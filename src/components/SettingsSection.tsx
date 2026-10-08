@@ -15,7 +15,6 @@ import {
   MapPin,
   Palette,
   Bell,
-  Gift,
   Sparkles,
   CreditCard,
   QrCode,
@@ -36,7 +35,6 @@ import {
   CheckCheck,
   ChevronRight,
   ShieldCheck,
-  Clock,
 } from 'lucide-react';
 import { Business, ThemeConfig } from '@/types/database';
 import { THEME_PRESETS, STAMP_ICONS } from '@/lib/theme-presets';
@@ -110,14 +108,6 @@ export default function SettingsSection({
   const [badge2, setBadge2] = useState('Organic Ingredients');
   const [logoUrl, setLogoUrl] = useState('');
 
-  // Loyalty Fields
-  const [stampsNeeded, setStampsNeeded] = useState(6);
-  const [rewardTitle, setRewardTitle] = useState('Free Specialty Beverage');
-  const [minOrder, setMinOrder] = useState(150);
-  const [avgSpend, setAvgSpend] = useState(250);
-  const [offerText, setOfferText] = useState('Complimentary Belgian Waffle with any drink');
-  const [expiryDays, setExpiryDays] = useState(60);
-
   // Notification Toggles
   const [orderAlerts, setOrderAlerts] = useState(true);
   const [scanAlerts, setScanAlerts] = useState(true);
@@ -128,7 +118,6 @@ export default function SettingsSection({
   // Modals & Feedback
   const [showGeneralModal, setShowGeneralModal] = useState(false);
   const [showHeroModal, setShowHeroModal] = useState(false);
-  const [showLoyaltyModal, setShowLoyaltyModal] = useState(false);
   const [showNotificationModal, setShowNotificationModal] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [showQrStandModal, setShowQrStandModal] = useState(false);
@@ -155,13 +144,6 @@ export default function SettingsSection({
       setDescription(theme?.description || business.reward_rule?.reward_desc || 'This is a restaurant where pure ingredients meet artisan craft.');
       setBadge1(theme?.badge_1 || theme?.welcome_badge || '10% Vegetarian Options');
       setBadge2(theme?.badge_2 || 'Organic Ingredients');
-
-      setStampsNeeded(business.reward_rule?.stamps_needed || 6);
-      setRewardTitle(business.reward_rule?.reward_title || 'Free Specialty Beverage');
-      setMinOrder(business.reward_rule?.min_order_for_stamp || business.min_order_for_stamp || 150);
-      setAvgSpend(business.avg_spend_per_visit || 250);
-      setOfferText(business.winback_offer_text || '');
-      setExpiryDays(business.reward_rule?.expiry_days !== undefined ? business.reward_rule.expiry_days : 60);
 
       setOrderAlerts(theme?.order_alerts_enabled ?? true);
       setScanAlerts(theme?.menu_scan_alerts_enabled ?? true);
@@ -284,47 +266,6 @@ export default function SettingsSection({
       }
     } catch {
       alert('Network error saving banner');
-    } finally {
-      setIsSaving(false);
-    }
-  }
-
-  // Save Loyalty Program Settings
-  async function handleSaveLoyalty(e: React.FormEvent) {
-    e.preventDefault();
-    if (!business) return;
-    try {
-      setIsSaving(true);
-      sound.playClick();
-      const res = await fetch(`/api/businesses/${business.slug}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          reward_rule: {
-            ...business.reward_rule,
-            stamps_needed: Math.min(8, Math.max(1, Number(stampsNeeded) || 6)),
-            reward_title: rewardTitle.trim() || 'Free Specialty Beverage',
-            min_order_for_stamp: Number(minOrder) || 150,
-            expiry_days: Number(expiryDays) >= 0 ? Number(expiryDays) : 60,
-          },
-          min_order_for_stamp: Number(minOrder) || 150,
-          avg_spend_per_visit: Number(avgSpend) || 250,
-          winback_offer_text: offerText.trim(),
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        sound.playRewardFanfare();
-        confetti({ particleCount: 70, spread: 70, origin: { y: 0.6 } });
-        setSaveSuccessToast(true);
-        setShowLoyaltyModal(false);
-        setTimeout(() => setSaveSuccessToast(false), 3500);
-        await onRefresh();
-      } else {
-        alert(data.error || 'Failed to update loyalty rules');
-      }
-    } catch {
-      alert('Network error saving loyalty rules');
     } finally {
       setIsSaving(false);
     }
@@ -529,44 +470,14 @@ export default function SettingsSection({
       </div>
 
       {/* ========================================================================= */}
-      {/* GROUP 2: LOYALTY & COUNTER                                                */}
+      {/* GROUP 2: COUNTER & PRINTABLES                                              */}
       {/* ========================================================================= */}
       <div className="space-y-2 pt-1">
         <div className="text-[11px] uppercase font-mono font-bold tracking-wider text-slate-400 px-1">
-          Loyalty Program &amp; Counter
+          Counter &amp; Display
         </div>
 
         <div className="bg-white rounded-3xl border border-slate-100 card-soft-shadow divide-y divide-slate-100 overflow-hidden">
-          {/* Loyalty & Stamp Rules */}
-          <button
-            type="button"
-            onClick={() => {
-              sound.playClick();
-              setShowLoyaltyModal(true);
-            }}
-            className="w-full text-left p-4 flex items-center justify-between hover:bg-slate-50 transition-colors cursor-pointer group"
-          >
-            <div className="flex items-center gap-3.5">
-              <div className="w-10 h-10 rounded-2xl bg-slate-50 text-slate-700 flex items-center justify-center shrink-0 border border-slate-200/80 group-hover:scale-105 group-hover:border-slate-300 transition-all">
-                <Gift className="w-4 h-4 text-slate-700" />
-              </div>
-              <div>
-                <div className="font-display font-bold text-xs sm:text-sm text-slate-900">
-                  Loyalty &amp; Stamp Rules
-                </div>
-                <div className="text-xs text-slate-400">
-                  Stamp milestones, reward perks, and min order thresholds
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-mono font-medium text-slate-700 bg-slate-100 border border-slate-200/80 px-2.5 py-0.5 rounded-full">
-                {stampsNeeded} Stamps • {expiryDays > 0 ? `${expiryDays}d Expiry` : 'No Expiry'}
-              </span>
-              <ChevronRight className="w-4 h-4 text-slate-400" />
-            </div>
-          </button>
-
           {/* Counter QR Stand Studio */}
           <button
             type="button"
@@ -1036,180 +947,7 @@ export default function SettingsSection({
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* EDIT MODAL 3: LOYALTY PROGRAM */}
-      {/* ========================================================================= */}
-      {showLoyaltyModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-lg w-full card-soft-shadow border border-slate-100 space-y-5 animate-stamp max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-2xl bg-[#E6F8F2] text-[#059669] flex items-center justify-center font-bold">
-                  <Gift className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="font-display font-bold text-base text-[#0F172A]">
-                    Edit Loyalty Program
-                  </h4>
-                  <p className="text-[11px] text-slate-400">
-                    Configure stamps needed, rewards and minimum spend
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowLoyaltyModal(false)}
-                className="p-1.5 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
 
-            <form onSubmit={handleSaveLoyalty} className="space-y-4 text-left">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                  Stamps Needed for Full Reward
-                </label>
-                <div className="grid grid-cols-6 gap-2">
-                  {[2, 3, 4, 5, 6, 8].map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => {
-                        setStampsNeeded(s);
-                        sound.playClick();
-                      }}
-                      className={`py-2 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer border ${
-                        stampsNeeded === s
-                          ? 'bg-[#0F172A] text-emerald-400 border-[#0F172A] shadow-xs'
-                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Grand Milestone Reward Title *
-                </label>
-                <input
-                  type="text"
-                  value={rewardTitle}
-                  onChange={(e) => setRewardTitle(e.target.value)}
-                  placeholder="e.g. Free Belgian Waffle & Cold Brew"
-                  required
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#0F172A]"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Minimum Bill per Stamp (₹)
-                  </label>
-                  <input
-                    type="number"
-                    value={minOrder}
-                    onChange={(e) => setMinOrder(Number(e.target.value))}
-                    placeholder="150"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-mono font-medium focus:outline-none focus:ring-2 focus:ring-[#0F172A]"
-                  />
-                </div>
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-semibold text-slate-700 flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5 text-amber-600" />
-                      <span>Reward Expiry (Days)</span>
-                    </label>
-                    <span className="text-[10px] font-mono text-amber-700 font-bold bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200/60">
-                      {expiryDays > 0 ? `${expiryDays}d Limit` : 'No Expiry'}
-                    </span>
-                  </div>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      min={0}
-                      max={365}
-                      value={expiryDays}
-                      onChange={(e) => setExpiryDays(Math.max(0, Number(e.target.value) || 0))}
-                      placeholder="60 (0 = No expiry)"
-                      className="w-full pl-3.5 pr-12 py-2.5 rounded-xl border border-slate-200 text-xs font-mono font-medium focus:outline-none focus:ring-2 focus:ring-[#0F172A]"
-                    />
-                    <span className="absolute right-3 top-3 text-[10px] font-mono text-slate-400">
-                      days
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Quick Expiry Preset Chips */}
-              <div className="flex items-center gap-1.5 pt-0.5">
-                <span className="text-[10px] text-slate-400 font-medium">Quick Presets:</span>
-                {[30, 45, 60, 90, 0].map((d) => (
-                  <button
-                    key={d}
-                    type="button"
-                    onClick={() => {
-                      setExpiryDays(d);
-                      sound.playClick();
-                    }}
-                    className={`px-2 py-0.5 rounded-lg text-[10px] font-mono font-bold transition-all cursor-pointer border ${
-                      expiryDays === d
-                        ? 'bg-[#0F172A] text-emerald-400 border-[#0F172A]'
-                        : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-                    }`}
-                  >
-                    {d === 0 ? 'Never' : `${d}d`}
-                  </button>
-                ))}
-              </div>
-
-              <div className="pt-2 border-t border-slate-100">
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Special WhatsApp Winback Offer Text
-                </label>
-                <input
-                  type="text"
-                  value={offerText}
-                  onChange={(e) => setOfferText(e.target.value)}
-                  placeholder="e.g. Complimentary Belgian Waffle with any drink"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#0F172A]"
-                />
-                <p className="text-[11px] text-slate-400 mt-1">
-                  Sent automatically in WhatsApp recovery messages to inactive regulars.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-3 pt-3">
-                <button
-                  type="button"
-                  onClick={() => setShowLoyaltyModal(false)}
-                  className="flex-1 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold cursor-pointer transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className="flex-1 py-3 rounded-2xl bg-[#0F172A] hover:bg-black text-white text-xs font-bold cursor-pointer transition-all shadow-md flex items-center justify-center gap-1.5"
-                >
-                  {isSaving ? (
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <>
-                      <Check className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>Save Loyalty Rules</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
       {/* ========================================================================= */}
       {/* EDIT MODAL 4: NOTIFICATIONS & SOUND                                        */}
       {/* ========================================================================= */}

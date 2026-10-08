@@ -30,6 +30,7 @@ interface CameraQrScannerModalProps {
   currentSlug?: string;
   customerPhone?: string;
   customerName?: string;
+  rewardId?: string;
   onStampClaimed?: (result: {
     success: boolean;
     cooldownActive?: boolean;
@@ -37,6 +38,8 @@ interface CameraQrScannerModalProps {
     minutesRemaining?: number;
     message?: string;
     membership?: any;
+    rewardId?: string;
+    passStamps?: number;
     business?: { name: string; slug: string; id?: string };
     guestRedirect?: boolean;
   }) => void;
@@ -48,6 +51,7 @@ export default function CameraQrScannerModal({
   currentSlug,
   customerPhone,
   customerName,
+  rewardId,
   onStampClaimed,
 }: CameraQrScannerModalProps) {
   const router = useRouter();
@@ -315,6 +319,7 @@ export default function CameraQrScannerModal({
             source: 'qr_scan',
             stampAwarded: 1,
             staffNote: 'Camera Viewfinder QR Scan',
+            rewardId: rewardId || undefined,
           }),
         });
 
@@ -358,6 +363,8 @@ export default function CameraQrScannerModal({
             minutesRemaining: stampData.minutesRemaining,
             message: stampData.message || stampData.error,
             membership: stampData.membership,
+            rewardId: stampData.rewardId,
+            passStamps: stampData.passStamps,
             business: { name: bizName, slug: bizSlug, id: stampData.membership?.business_id || stampData.business?.id },
           });
         }

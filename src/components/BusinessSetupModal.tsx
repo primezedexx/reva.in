@@ -208,6 +208,7 @@ export default function BusinessSetupModal({
         is_setup_completed: true,
       };
 
+      const cleanPhone = phone.trim();
       const updatedRewardRule = {
         stamps_needed: Number(stampsNeeded) || 6,
         reward_title: rewardTitle.trim() || 'Free Specialty Beverage',
@@ -215,6 +216,8 @@ export default function BusinessSetupModal({
         min_order_for_stamp: Number(minOrder) || 150,
         expiry_days: Number(expiryDays) >= 0 ? Number(expiryDays) : 60,
         theme_config: compiledTheme,
+        phone: cleanPhone || undefined,
+        phone_verified: Boolean(cleanPhone),
       };
 
       const payload = {
@@ -223,7 +226,8 @@ export default function BusinessSetupModal({
         category: category,
         city: city.trim() || 'Bangalore',
         area: area.trim() || undefined,
-        phone: phone.trim() || undefined,
+        phone: cleanPhone || undefined,
+        phone_verified: Boolean(cleanPhone),
         brand_color: cardBgColor || '#0F172A',
         reward_rule: updatedRewardRule,
         theme_config: compiledTheme,

@@ -439,6 +439,9 @@ function CustomerPortalContent() {
   // Customer's Joined Passes (starts empty for new users)
   const [userPasses, setUserPasses] = useState<
     Array<{
+      id?: string;
+      rewardId?: string;
+      businessId?: string;
       slug: string;
       name: string;
       category: string;
@@ -461,14 +464,26 @@ function CustomerPortalContent() {
       city?: string;
       joined_at?: string;
       last_visit_at?: string;
+      last_qr_stamp_at?: string;
       theme_config?: ThemeConfig;
       reward_rule?: RewardRule;
       active_offers?: any[];
       total_visits?: number;
+      expiry_days?: number;
+      expiryDays?: number;
     }>
   >([]);
 
-  // Selected Pass in Featured Digital Pass Holder (persisted across sessions & tab switches)
+  // Selected Pass ID in Featured Digital Pass Holder (persisted across sessions & tab switches)
+  const [selectedPassId, setSelectedPassId] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        return localStorage.getItem('reva_selected_pass_id') || localStorage.getItem('reva_selected_pass_slug') || '';
+      } catch {}
+    }
+    return '';
+  });
+
   const [selectedPassSlug, setSelectedPassSlug] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -477,19 +492,37 @@ function CustomerPortalContent() {
     }
     return '';
   });
+
   const passHolderRef = useRef<HTMLDivElement>(null);
 
   const selectedPass = useMemo(() => {
     if (userPasses.length === 0) return null;
-    return userPasses.find((p) => p.slug === selectedPassSlug) || userPasses[0];
-  }, [userPasses, selectedPassSlug]);
+    return (
+      userPasses.find((p: any) => p.id && p.id === selectedPassId) ||
+      userPasses.find((p) => p.slug === selectedPassSlug) ||
+      userPasses[0]
+    );
+  }, [userPasses, selectedPassId, selectedPassSlug]);
 
-  const handleSelectPass = (slug: string) => {
+  const handleSelectPass = (idOrSlug: string) => {
     sound.playClick();
-    setSelectedPassSlug(slug);
-    try {
-      localStorage.setItem('reva_selected_pass_slug', slug);
-    } catch {}
+    const foundPass = userPasses.find((p: any) => (p.id && p.id === idOrSlug) || p.slug === idOrSlug);
+    if (foundPass) {
+      const pid = foundPass.id || foundPass.slug;
+      setSelectedPassId(pid);
+      setSelectedPassSlug(foundPass.slug);
+      try {
+        localStorage.setItem('reva_selected_pass_id', pid);
+        localStorage.setItem('reva_selected_pass_slug', foundPass.slug);
+      } catch {}
+    } else {
+      setSelectedPassId(idOrSlug);
+      setSelectedPassSlug(idOrSlug);
+      try {
+        localStorage.setItem('reva_selected_pass_id', idOrSlug);
+        localStorage.setItem('reva_selected_pass_slug', idOrSlug);
+      } catch {}
+    }
     setTimeout(() => {
       if (passHolderRef.current) {
         passHolderRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -497,6 +530,198 @@ function CustomerPortalContent() {
         window.scrollTo({ top: 0, behavior: 'smooth' });
       }
     }, 50);
+  };
+
+  // Resolve the customer's current registered cafe/store
+  const currentStore = useMemo(() => {
+    const slug = selectedPass?.slug || (userPasses.length > 0 ? userPasses[0].slug : null);
+    if (!slug) return null;
+    const fromBiz = businesses.find((b) => b.slug === slug);
+    if (fromBiz) return fromBiz;
+    if (selectedPass) {
+      return {
+        id: selectedPass.businessId || selectedPass.slug,
+        slug: selectedPass.slug,
+        name: selectedPass.name,
+        category: selectedPass.category,
+        brand_color: selectedPass.brandColor,
+        logo_url: selectedPass.logo_url,
+        reward_rule: selectedPass.reward_rule,
+        active_offers: selectedPass.active_offers || [],
+        theme_config: selectedPass.theme_config,
+      } as BusinessItem;
+    }
+    return null;
+  }, [selectedPass, userPasses, businesses]);
+
+  // Dynamically resolve the active pass's specific stamp validity / expiry days
+  const activePassExpiryDays = useMemo(() => {
+    if (!selectedPass) return null;
+    // 1. If it's an additional reward pass, look up in currentStore/selectedPass active_offers first
+    if (selectedPass.rewardId && selectedPass.rewardId !== 'primary') {
+      const offers = (selectedPass.active_offers || currentStore?.active_offers || []);
+      const matchedOffer = offers.find(
+        (o: any) => o.id === selectedPass.rewardId || o.title?.toLowerCase().trim() === selectedPass.rewardTitle?.toLowerCase().trim()
+      );
+      if (matchedOffer && matchedOffer.expiry_days !== undefined && matchedOffer.expiry_days !== null) {
+        return Number(matchedOffer.expiry_days);
+      }
+    }
+    // 2. If the pass has its own explicit expiry_days
+    if (selectedPass.expiry_days !== undefined && selectedPass.expiry_days !== null) {
+      return Number(selectedPass.expiry_days);
+    }
+    if ((selectedPass as any).expiryDays !== undefined && (selectedPass as any).expiryDays !== null) {
+      return Number((selectedPass as any).expiryDays);
+    }
+    // 3. Fallback to primary reward_rule expiry_days
+    if (selectedPass.reward_rule?.expiry_days !== undefined && selectedPass.reward_rule?.expiry_days !== null) {
+      return Number(selectedPass.reward_rule.expiry_days);
+    }
+    return null;
+  }, [selectedPass, currentStore]);
+
+  // Unstarted rewards belonging EXCLUSIVELY to the current cafe/store
+  const availableStoreRewardsToStart = useMemo(() => {
+    if (!currentStore) return [];
+    const rewards: Array<{
+      id: string;
+      title: string;
+      stamps_needed: number;
+      desc?: string;
+      expiry_days?: number;
+      min_order?: number;
+    }> = [];
+
+    // Primary reward
+    if (currentStore.reward_rule?.reward_title) {
+      rewards.push({
+        id: 'primary',
+        title: currentStore.reward_rule.reward_title,
+        stamps_needed: currentStore.reward_rule.stamps_needed || 6,
+        desc: currentStore.reward_rule.reward_desc || `Unlocked after completing ${currentStore.reward_rule.stamps_needed || 6} stamps.`,
+        expiry_days: currentStore.reward_rule.expiry_days,
+        min_order: currentStore.reward_rule.min_order_for_stamp || undefined,
+      });
+    }
+
+    // Additional active offers
+    const offers = (currentStore.active_offers || []).filter(
+      (o) => o.title !== currentStore.reward_rule?.reward_title
+    );
+    for (const o of offers) {
+      rewards.push({
+        id: o.id,
+        title: o.title,
+        stamps_needed: o.stamps_needed || 6,
+        desc: o.desc || `Unlocked after completing ${o.stamps_needed || 6} stamps.`,
+        expiry_days: o.expiry_days,
+        min_order: o.min_order || undefined,
+      });
+    }
+
+    // Filter out rewards already active on this store
+    const storePasses = userPasses.filter((p) => p.slug === currentStore.slug);
+    const startedIds = new Set(
+      storePasses.map((p: any) => p.rewardId || (p.id ? p.id.split('_').slice(1).join('_') : 'primary'))
+    );
+    const startedTitles = new Set(storePasses.map((p) => p.rewardTitle.toLowerCase().trim()));
+
+    return rewards.filter(
+      (r) => !startedIds.has(r.id) && !startedTitles.has(r.title.toLowerCase().trim())
+    );
+  }, [currentStore, userPasses]);
+
+  // Global Cross-Pass 24-Hour Cooldown Calculation (DO NOT CHANGE CALCULATION FORMULA)
+  const customerLatestQrStamp = useMemo(() => {
+    const fromPasses = userPasses.map((p) => (p.last_qr_stamp_at ? new Date(p.last_qr_stamp_at).getTime() : 0));
+    let fromStorage = 0;
+    if (typeof window !== 'undefined') {
+      try {
+        fromStorage = Number(localStorage.getItem('reva_last_qr_stamp_ts') || 0);
+      } catch {}
+    }
+    return Math.max(0, ...fromPasses, fromStorage);
+  }, [userPasses]);
+
+  const COOLDOWN_MS = 24 * 60 * 60 * 1000;
+  const timeSinceLastQr = Date.now() - customerLatestQrStamp;
+  const isGlobalCooldownActive = customerLatestQrStamp > 0 && timeSinceLastQr < COOLDOWN_MS;
+  const remainingCooldownMs = isGlobalCooldownActive ? COOLDOWN_MS - timeSinceLastQr : 0;
+  const remainingCooldownHours = Math.max(0, Math.floor(remainingCooldownMs / (1000 * 60 * 60)));
+  const remainingCooldownMins = Math.max(1, Math.floor((remainingCooldownMs % (1000 * 60 * 60)) / (1000 * 60)));
+
+  // Start This Pass handler (Creates an independent pass cycle)
+  const handleStartRewardPass = async (reward: {
+    id: string;
+    title: string;
+    stamps_needed: number;
+    desc?: string;
+    expiry_days?: number;
+    min_order?: number;
+  }) => {
+    if (!currentStore) return;
+    sound.playRewardFanfare();
+    confetti({ particleCount: 60, spread: 50, origin: { y: 0.6 } });
+
+    const newPassId = `${currentStore.slug}_${reward.id}`;
+    const newPass = {
+      id: newPassId,
+      rewardId: reward.id,
+      slug: currentStore.slug,
+      businessId: currentStore.id,
+      name: currentStore.name,
+      category: currentStore.category,
+      brandColor: currentStore.brand_color || selectedPass?.brandColor || '#0F172A',
+      logo_url: currentStore.logo_url || selectedPass?.logo_url || '',
+      stamps: 0,
+      totalStamps: reward.stamps_needed,
+      rewardTitle: reward.title,
+      description: reward.desc,
+      expiry_days: reward.expiry_days,
+      expiryDays: reward.expiry_days,
+      lastVisit: 'Just started',
+      minOrder: reward.min_order || undefined,
+      passId: `REV-${reward.id.slice(0, 8).toUpperCase()}`,
+      membershipId: (selectedPass as any)?.membershipId || (selectedPass as any)?.membership_id,
+      membership_id: (selectedPass as any)?.membershipId || (selectedPass as any)?.membership_id,
+      theme_config: currentStore.theme_config || selectedPass?.theme_config,
+      reward_rule: currentStore.reward_rule || selectedPass?.reward_rule,
+      active_offers: currentStore.active_offers || selectedPass?.active_offers || [],
+      last_qr_stamp_at: customerLatestQrStamp > 0 ? new Date(customerLatestQrStamp).toISOString() : undefined,
+    };
+
+    const updatedPasses = [...userPasses, newPass as any];
+    setUserPasses(updatedPasses as any);
+    setSelectedPassId(newPassId);
+    setSelectedPassSlug(currentStore.slug);
+
+    try {
+      localStorage.setItem('reva_customer_passes', JSON.stringify(updatedPasses));
+      localStorage.setItem('reva_selected_pass_id', newPassId);
+      localStorage.setItem('reva_selected_pass_slug', currentStore.slug);
+    } catch {}
+
+    const effPhone = customerPhone || localStorage.getItem('reva_customer_phone') || '';
+    const effEmail = customerEmail || localStorage.getItem('reva_customer_email') || '';
+    if (effPhone || effEmail) {
+      try {
+        await fetch('/api/customer/session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            businessSlug: currentStore.slug,
+            phone: effPhone,
+            email: effEmail,
+            name: customerName,
+            startRewardId: reward.id,
+          }),
+        });
+      } catch {}
+    }
+
+    setUploadToast(`✓ Started "${reward.title}" pass!`);
+    setTimeout(() => setUploadToast(null), 3500);
   };
 
   // Helper to filter out ambient merchant/admin emails
@@ -1754,7 +1979,9 @@ function CustomerPortalContent() {
         totalStamps: stampsNeeded,
         rewardTitle: targetBiz.reward_rule?.reward_title || 'Specialty Loyalty Reward',
         lastVisit: 'Just joined',
-        minOrder: targetBiz.reward_rule?.min_order_for_stamp || 150,
+        minOrder: targetBiz.reward_rule?.min_order_for_stamp || targetBiz.min_order_for_stamp || undefined,
+        expiry_days: targetBiz.reward_rule?.expiry_days !== undefined ? Number(targetBiz.reward_rule.expiry_days) : 60,
+        expiryDays: targetBiz.reward_rule?.expiry_days !== undefined ? Number(targetBiz.reward_rule.expiry_days) : 60,
         passId: mem?.id
           ? `REV-${mem.id.slice(0, 8).toUpperCase()}`
           : `REV-${targetBiz.slug.slice(0, 3).toUpperCase()}-${Math.floor(10000 + Math.random() * 90000)}`,
@@ -1979,12 +2206,8 @@ function CustomerPortalContent() {
                         </span>
                       </div>
 
-                      <div
-                        className="grid gap-2.5"
-                        style={{
-                          gridTemplateColumns: `repeat(${selectedPass.totalStamps <= 6 ? selectedPass.totalStamps : 4}, minmax(0, 1fr))`,
-                        }}
-                      >
+                      {/* Stamp Grid (Fixed Slot Size & Centered with Equal Side Gaps) */}
+                      <div className="flex items-center justify-center flex-wrap gap-2 sm:gap-2.5 py-1 min-h-[58px]">
                         {Array.from({ length: selectedPass.totalStamps }).map((_, idx) => {
                           const isStamped = idx < selectedPass.stamps;
                           const isNext = idx === selectedPass.stamps;
@@ -1996,13 +2219,17 @@ function CustomerPortalContent() {
                               onClick={() => {
                                 sound.playStampPop();
                               }}
-                              className={`aspect-square rounded-2xl flex flex-col items-center justify-center relative transition-all duration-300 cursor-pointer ${
+                              className={`aspect-square rounded-2xl flex flex-col items-center justify-center relative transition-all duration-300 cursor-pointer shrink-0 ${
                                 isStamped
                                   ? 'bg-white text-slate-900 shadow-lg scale-100'
                                   : isNext
                                   ? 'border-2 border-dashed border-white/90 bg-white/20 scale-95 ring-2 ring-white/30'
                                   : 'border-2 border-dashed border-white/30 bg-black/10 opacity-60'
                               }`}
+                              style={{
+                                width: 'clamp(44px, calc((100% - 40px) / 6), 54px)',
+                                height: 'clamp(44px, calc((100% - 40px) / 6), 54px)',
+                              }}
                             >
                               {renderStampIconSymbol(passStampIcon, isStamped, isRewardSlot, passTheme?.accent_color || selectedPass.brandColor)}
 
@@ -2044,7 +2271,9 @@ function CustomerPortalContent() {
                               rewardTitle: selectedPass.rewardTitle,
                               stamps: selectedPass.stamps,
                               totalNeeded: selectedPass.totalStamps,
-                              expiry: selectedPass.reward_rule?.expiry_days
+                              expiry: activePassExpiryDays
+                                ? `Expires in ${activePassExpiryDays} days`
+                                : selectedPass.reward_rule?.expiry_days
                                 ? `Expires in ${selectedPass.reward_rule.expiry_days} days`
                                 : 'Expires in 30 days',
                             })
@@ -2063,17 +2292,14 @@ function CustomerPortalContent() {
                               <b>{selectedPass.totalStamps - selectedPass.stamps} more stamps</b> to {selectedPass.rewardTitle}
                             </span>
                           </div>
-                          <span className="text-[10px] font-mono opacity-80 shrink-0">
-                            Min ₹{selectedPass.minOrder || 150}+
-                          </span>
                         </div>
-                        {Boolean(selectedPass.reward_rule?.expiry_days && selectedPass.reward_rule.expiry_days > 0) && (
+                        {Boolean(activePassExpiryDays && activePassExpiryDays > 0) && (
                           <div className="text-[10px] text-white/80 font-mono flex items-center justify-between px-1">
                             <span className="flex items-center gap-1">
                               <Clock className="w-3 h-3 text-amber-300 shrink-0" />
                               <span>Stamps validity:</span>
                             </span>
-                            <span className="font-bold text-amber-200">{selectedPass.reward_rule?.expiry_days} days to complete</span>
+                            <span className="font-bold text-amber-200">{activePassExpiryDays} days to complete</span>
                           </div>
                         )}
                       </div>
@@ -2150,7 +2376,17 @@ function CustomerPortalContent() {
                     <button
                       onClick={() => {
                         sound.playClick();
-                        setShowScannerModal(true);
+                        if (isGlobalCooldownActive) {
+                          setCooldownModal({
+                            isOpen: true,
+                            hoursRemaining: remainingCooldownHours,
+                            minutesRemaining: remainingCooldownMins,
+                            businessName: (currentStore as any)?.name || 'Partner Store',
+                            businessColor: '#0F172A',
+                          });
+                        } else {
+                          setShowScannerModal(true);
+                        }
                       }}
                       className="w-full sm:w-auto px-6 py-3 rounded-full bg-[#0F172A] hover:bg-black dark:bg-white dark:hover:bg-slate-100 text-white dark:text-black font-display font-bold text-xs shadow-md transition-all cursor-pointer inline-flex items-center justify-center gap-2 group active:scale-98"
                     >
@@ -2172,7 +2408,17 @@ function CustomerPortalContent() {
                 <button
                   onClick={() => {
                     sound.playClick();
-                    setShowScannerModal(true);
+                    if (isGlobalCooldownActive) {
+                      setCooldownModal({
+                        isOpen: true,
+                        hoursRemaining: remainingCooldownHours,
+                        minutesRemaining: remainingCooldownMins,
+                        businessName: selectedPass?.name || currentStore?.name,
+                        businessColor: selectedPass?.brandColor || '#0F172A',
+                      });
+                    } else {
+                      setShowScannerModal(true);
+                    }
                   }}
                   className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer flex items-center gap-1"
                 >
@@ -2192,19 +2438,20 @@ function CustomerPortalContent() {
                     No Active Loyalty Passes
                   </div>
                   <p className="text-xs text-slate-500">
-                    Tap <span className="font-semibold text-slate-700 dark:text-slate-300">START</span> on any store below to join a pass and start collecting stamps!
+                    Tap <span className="font-semibold text-slate-700 dark:text-slate-300">START</span> below to join a pass and start collecting stamps!
                   </p>
                 </div>
               ) : (
                 <div className="space-y-2.5">
                   {userPasses.map((pass) => {
                     const isCompleted = pass.stamps >= pass.totalStamps;
-                    const isCurrentlySelected = pass.slug === selectedPassSlug;
+                    const passKey = pass.id || pass.slug;
+                    const isCurrentlySelected = selectedPass ? (pass.id ? pass.id === selectedPass.id : pass.slug === selectedPassSlug) : pass.slug === selectedPassSlug;
 
                     return (
                       <div
-                        key={pass.slug}
-                        onClick={() => handleSelectPass(pass.slug)}
+                        key={passKey}
+                        onClick={() => handleSelectPass(passKey)}
                         className={`block rounded-2xl p-3.5 border transition-all cursor-pointer hover:scale-[1.01] ${
                           isCurrentlySelected
                             ? isDarkMode
@@ -2228,7 +2475,7 @@ function CustomerPortalContent() {
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5">
                                 <h3 className="font-display font-bold text-sm text-slate-900 dark:text-white leading-tight truncate">
-                                  {pass.name}
+                                  {pass.rewardTitle || pass.name}
                                 </h3>
                                 {isCurrentlySelected && (
                                   <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" title="Viewing in pass holder above" />
@@ -2239,7 +2486,7 @@ function CustomerPortalContent() {
                                   {pass.stamps} / {pass.totalStamps} Stamps
                                 </span>
                                 <span>•</span>
-                                <span className="truncate">{pass.rewardTitle}</span>
+                                <span className="truncate text-slate-500">{pass.name}</span>
                               </div>
                             </div>
                           </div>
@@ -2249,7 +2496,7 @@ function CustomerPortalContent() {
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleSelectPass(pass.slug);
+                                handleSelectPass(passKey);
                               }}
                               className={`px-2.5 py-1 rounded-full text-[10px] font-display font-bold uppercase tracking-wider transition-all cursor-pointer ${
                                 isCurrentlySelected
@@ -2259,7 +2506,7 @@ function CustomerPortalContent() {
                                   : 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300 hover:bg-slate-200'
                               }`}
                             >
-                              {isCurrentlySelected ? 'Viewing Above' : isCompleted ? 'View Pass' : 'View Pass'}
+                              {isCurrentlySelected ? 'Viewing Above' : isCompleted ? 'Reward Ready' : 'View Pass'}
                             </button>
                           </div>
                         </div>
@@ -2269,7 +2516,7 @@ function CustomerPortalContent() {
                           <div
                             className="h-full rounded-full transition-all duration-500"
                             style={{
-                              width: `${(pass.stamps / pass.totalStamps) * 100}%`,
+                              width: `${Math.min(100, (pass.stamps / pass.totalStamps) * 100)}%`,
                               backgroundColor: pass.brandColor,
                             }}
                           />
@@ -2281,47 +2528,51 @@ function CustomerPortalContent() {
               )}
             </div>
 
-            {/* START A NEW PASS (DISCOVERY CARDS - UNJOINED STORES) */}
+            {/* START A NEW PASS (AVAILABLE REWARDS FOR CURRENT STORE ONLY) */}
             <div className="space-y-3 pt-3">
               <div className="flex items-center justify-between">
-                <h2 className="font-display font-bold text-sm tracking-tight text-slate-900 dark:text-white">
-                  Start a New Pass
-                </h2>
+                <div>
+                  <h2 className="font-display font-bold text-sm tracking-tight text-slate-900 dark:text-white">
+                    Start a New Pass
+                  </h2>
+                  {currentStore && (
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Additional rewards at <span className="font-semibold text-slate-700 dark:text-slate-300">{currentStore.name}</span>
+                    </p>
+                  )}
+                </div>
               </div>
 
-              {availableToJoinBusinesses.length === 0 ? (
+              {!currentStore ? (
                 <div
                   className={`rounded-2xl p-4 text-center border ${
                     isDarkMode ? 'bg-slate-900/40 border-slate-800' : 'bg-slate-50 border-slate-200'
                   }`}
                 >
-                  {businesses.length === 0 ? (
-                    <div className="space-y-1">
-                      <div className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                        No partner stores listed in this area yet
-                      </div>
-                      <p className="text-[11px] text-slate-500">
-                        Scan a store QR code or register your store to start a digital pass.
-                      </p>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center justify-center gap-1.5">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                        <span>You have active passes at all partner stores!</span>
-                      </div>
-                      <p className="text-[11px] text-slate-500 pt-0.5">
-                        Scan a store QR code to discover newly added spots.
-                      </p>
-                    </>
-                  )}
+                  <p className="text-xs text-slate-500">
+                    Scan a store QR code to activate your first pass.
+                  </p>
+                </div>
+              ) : availableStoreRewardsToStart.length === 0 ? (
+                <div
+                  className={`rounded-2xl p-4 text-center border ${
+                    isDarkMode ? 'bg-slate-900/40 border-slate-800' : 'bg-slate-50 border-slate-200'
+                  }`}
+                >
+                  <div className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center justify-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                    <span>All rewards for {currentStore.name} are active on your pass!</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 pt-0.5">
+                    Keep collecting stamps at {currentStore.name} to unlock your rewards.
+                  </p>
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {availableToJoinBusinesses.slice(0, 4).map((b) => (
+                  {availableStoreRewardsToStart.map((r) => (
                     <div
-                      key={b.slug}
-                      className={`rounded-2xl p-3 border flex items-center justify-between transition-all ${
+                      key={r.id}
+                      className={`rounded-2xl p-3.5 border flex items-center justify-between transition-all ${
                         isDarkMode
                           ? 'bg-slate-900 border-slate-800 hover:border-slate-700'
                           : 'bg-white border-slate-200/90 hover:border-slate-300 shadow-2xs'
@@ -2331,32 +2582,33 @@ function CustomerPortalContent() {
                         <div className="w-11 h-11 rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-800 shrink-0 border border-slate-200 dark:border-slate-700 shadow-2xs">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
-                            src={getBusinessLogo(b.name, b.category, b.logo_url)}
-                            alt={b.name}
+                            src={getBusinessLogo(currentStore.name, currentStore.category, currentStore.logo_url)}
+                            alt={currentStore.name}
                             className="w-full h-full object-cover"
                           />
                         </div>
                         <div className="min-w-0">
                           <div className="flex items-center gap-1.5">
                             <h4 className="font-display font-bold text-sm text-slate-900 dark:text-white leading-tight truncate">
-                              {b.name}
+                              {r.title}
                             </h4>
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
                           </div>
-                          <div className="text-xs text-slate-600 dark:text-slate-300 leading-tight pt-0.5 truncate">
-                            {b.reward_rule?.reward_title || 'Loyalty stamps on every visit'}
+                          <div className="text-xs text-amber-600 dark:text-amber-400 font-bold leading-tight pt-0.5 truncate">
+                            0 / {r.stamps_needed} Stamps
                           </div>
-                          <div className="text-[11px] font-mono text-slate-400 pt-0.5">
-                            {b.category}
-                          </div>
+                          {r.desc && (
+                            <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate pt-0.5">
+                              {r.desc}
+                            </div>
+                          )}
                         </div>
                       </div>
 
                       <button
-                        onClick={() => handleOpenJoinModal(b)}
-                        className="px-3.5 py-1.5 rounded-full border border-slate-900 dark:border-white font-display font-bold text-[11px] text-[#0F172A] dark:text-white hover:bg-[#0F172A] hover:text-white dark:hover:bg-white dark:hover:text-black transition-all shrink-0 ml-2 cursor-pointer active:scale-95"
+                        onClick={() => handleStartRewardPass(r)}
+                        className="px-3.5 py-1.5 rounded-full bg-[#0F172A] hover:bg-black dark:bg-white dark:hover:bg-slate-100 font-display font-bold text-[11px] text-white dark:text-black transition-all shrink-0 ml-2 cursor-pointer active:scale-95 shadow-2xs"
                       >
-                        START
+                        START THIS PASS
                       </button>
                     </div>
                   ))}
@@ -3614,7 +3866,8 @@ function CustomerPortalContent() {
       <CameraQrScannerModal
         isOpen={showScannerModal}
         onClose={() => setShowScannerModal(false)}
-        currentSlug={selectedPassSlug}
+        currentSlug={selectedPass?.slug || selectedPassSlug}
+        rewardId={selectedPass?.rewardId}
         customerPhone={customerPhone}
         customerName={customerName}
         onStampClaimed={(res) => {
@@ -3624,20 +3877,35 @@ function CustomerPortalContent() {
             setUploadToast(`✓ Stamp claimed at ${res.business?.name || 'store'}!`);
             setTimeout(() => setUploadToast(null), 3500);
 
-            // Reactive immediate in-place update of userPasses
+            const claimedRewardId = res.rewardId || selectedPass?.rewardId;
+            const nowIso = new Date().toISOString();
+            try {
+              localStorage.setItem('reva_last_qr_stamp_ts', String(Date.now()));
+            } catch {}
+
+            // Reactive immediate in-place update of userPasses: update stamps for only this pass, and update last_qr_stamp_at across ALL passes
             if (res.business?.slug) {
               setUserPasses((prev) => {
-                const found = prev.some((p) => p.slug === res.business?.slug);
-                if (found) {
-                  return prev.map((p) =>
-                    p.slug === res.business?.slug
-                      ? { ...p, stamps: res.membership?.stamps ?? (p.stamps + 1), lastVisit: 'Just now' }
-                      : p
-                  );
-                }
-                return prev;
+                const updated = prev.map((p) => {
+                  const isThisPass =
+                    p.slug === res.business?.slug &&
+                    ((claimedRewardId && p.rewardId === claimedRewardId) || (!claimedRewardId && !p.rewardId));
+                  return {
+                    ...p,
+                    last_qr_stamp_at: nowIso,
+                    ...(isThisPass
+                      ? {
+                          stamps: res.passStamps ?? res.membership?.stamps ?? p.stamps + 1,
+                          lastVisit: 'Just now',
+                        }
+                      : {}),
+                  };
+                });
+                try {
+                  localStorage.setItem('reva_customer_passes', JSON.stringify(updated));
+                } catch {}
+                return updated;
               });
-              setSelectedPassSlug(res.business.slug);
             }
 
             // Silent background sync

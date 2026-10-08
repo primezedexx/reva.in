@@ -191,9 +191,6 @@ function OwnerDashboardContent() {
   const [showProfilePrivacyModal, setShowProfilePrivacyModal] = useState(false);
   const [showPhoneVerifyModal, setShowPhoneVerifyModal] = useState(false);
   const [verifyPhoneInput, setVerifyPhoneInput] = useState('');
-  const [verifyPhoneStep, setVerifyPhoneStep] = useState<'input' | 'otp'>('input');
-  const [verifyPhoneOtp, setVerifyPhoneOtp] = useState('');
-  const [verifyPhoneTestOtp, setVerifyPhoneTestOtp] = useState<string | null>(null);
   const [isVerifyPhoneLoading, setIsVerifyPhoneLoading] = useState(false);
   const [verifyPhoneError, setVerifyPhoneError] = useState<string | null>(null);
   const [verifyPhoneSuccess, setVerifyPhoneSuccess] = useState<string | null>(null);
@@ -1184,10 +1181,7 @@ function OwnerDashboardContent() {
       setIsSavingSettings(true);
       sound.playClick();
       const trimmedPhone = settingsPhone.trim();
-      const phoneChanged = trimmedPhone !== (selectedBusiness.phone || '');
-      const isCurrentPhoneVerified = phoneChanged
-        ? false
-        : Boolean(selectedBusiness.phone_verified ?? (selectedBusiness.reward_rule as any)?.phone_verified ?? false);
+      const isCurrentPhoneVerified = Boolean(trimmedPhone);
 
       const res = await fetch(`/api/businesses/${selectedBusiness.slug}`, {
         method: 'PATCH',
@@ -1237,8 +1231,8 @@ function OwnerDashboardContent() {
     }
   }
 
-  // 4a. Mobile Number OTP Verification Handlers
-  async function handleSendPhoneOtp(e?: React.FormEvent) {
+  // 4a. Mobile Number Direct Verification Handler (No OTP Required)
+  async function handleDirectVerifyPhone(e?: React.FormEvent) {
     if (e) e.preventDefault();
     const cleanNumber = verifyPhoneInput.trim().replace(/\s+/g, '');
     if (cleanNumber.replace(/\D/g, '').length < 10) {
@@ -1251,57 +1245,6 @@ function OwnerDashboardContent() {
     sound.playClick();
 
     try {
-      const res = await fetch('/api/customer/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'request_otp',
-          phone: cleanNumber,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || data.error) {
-        setVerifyPhoneError(data.error || 'Failed to send OTP code.');
-        return;
-      }
-      setVerifyPhoneTestOtp(data.testOtp || '4829');
-      setVerifyPhoneStep('otp');
-      setVerifyPhoneSuccess(`✓ Verification code sent to ${data.phone || cleanNumber}`);
-    } catch {
-      setVerifyPhoneError('Network connection error. Please try again.');
-    } finally {
-      setIsVerifyPhoneLoading(false);
-    }
-  }
-
-  async function handleVerifyPhoneOtp(e?: React.FormEvent) {
-    if (e) e.preventDefault();
-    const cleanNumber = verifyPhoneInput.trim().replace(/\s+/g, '');
-    const code = verifyPhoneOtp.trim();
-    if (!code || code.length < 4) {
-      setVerifyPhoneError('Please enter the 4-digit verification code.');
-      return;
-    }
-    setVerifyPhoneError(null);
-    setIsVerifyPhoneLoading(true);
-    sound.playClick();
-
-    try {
-      const res = await fetch('/api/customer/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'verify_otp',
-          phone: cleanNumber,
-          otp: code,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || data.error) {
-        setVerifyPhoneError(data.error || 'Invalid or expired OTP code.');
-        return;
-      }
-
       if (selectedBusiness) {
         const updateRes = await fetch(`/api/businesses/${selectedBusiness.slug}`, {
           method: 'PATCH',
@@ -1325,17 +1268,15 @@ function OwnerDashboardContent() {
       setSettingsPhone(cleanNumber);
       sound.playRewardFanfare();
       confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
-      setVerifyPhoneSuccess('✓ Phone number verified successfully!');
+      setVerifyPhoneSuccess('✓ Phone number verified and saved!');
       setTimeout(() => {
         setShowPhoneVerifyModal(false);
-        setVerifyPhoneStep('input');
-        setVerifyPhoneOtp('');
-        setVerifyPhoneTestOtp(null);
+        setVerifyPhoneError(null);
         setVerifyPhoneSuccess(null);
         if (selectedBusiness) loadDashboardData(selectedBusiness.id);
-      }, 1200);
+      }, 1000);
     } catch {
-      setVerifyPhoneError('Network error verifying code.');
+      setVerifyPhoneError('Network error saving phone number.');
     } finally {
       setIsVerifyPhoneLoading(false);
     }
@@ -1544,14 +1485,14 @@ function OwnerDashboardContent() {
       sound.playStampPop();
 
       const rawStamps = Number(newOfferStamps) || 1;
-      const stamps = Math.min(12, Math.max(1, rawStamps));
+      const stamps = Math.min(50, Math.max(1, rawStamps));
       const expiry = Number(newOfferExpiryDays) > 0 ? Number(newOfferExpiryDays) : undefined;
       const newOffer: StoreOffer = {
         id: 'off_' + Math.random().toString(36).substring(2, 9),
         title: newOfferTitle.trim(),
         stamps_needed: stamps,
-        badge: `${stamps} Stamps Milestone`,
-        desc: newOfferDesc.trim() || `Unlocked when customer reaches ${stamps} stamps on their digital pass`,
+        badge: `${stamps} Stamps Reward`,
+        desc: newOfferDesc.trim() || `Unlocked after completing ${stamps} stamps`,
         type: 'milestone',
         icon: 'gift',
         expiry_days: expiry,
@@ -1576,8 +1517,8 @@ function OwnerDashboardContent() {
         setShowCreateOfferModal(false);
         setNewOfferTitle('');
         setNewOfferDesc('');
-        setNewOfferStamps(3);
-        setNewOfferBadge('3 Stamps Milestone');
+        setNewOfferStamps(8);
+        setNewOfferBadge('8 Stamps Reward');
         setNewOfferExpiryDays('30');
         await loadDashboardData(selectedBusiness.id);
       }
@@ -1591,8 +1532,8 @@ function OwnerDashboardContent() {
   function handleOpenEditOfferModal(offer: StoreOffer) {
     setEditingOffer(offer);
     setEditOfferTitle(offer.title || '');
-    setEditOfferStamps(Math.min(12, Math.max(1, offer.stamps_needed || 3)));
-    setEditOfferBadge(offer.badge || `${offer.stamps_needed || 3} Stamps Milestone`);
+    setEditOfferStamps(Math.min(50, Math.max(1, offer.stamps_needed || 8)));
+    setEditOfferBadge(offer.badge || `${offer.stamps_needed || 8} Stamps Reward`);
     setEditOfferDesc(offer.desc || '');
     setEditOfferIcon((offer.icon as any) || 'gift');
     setEditOfferExpiryDays(offer.expiry_days !== undefined ? String(offer.expiry_days) : '30');
@@ -1606,7 +1547,7 @@ function OwnerDashboardContent() {
       setIsEditingOffer(true);
       sound.playClick();
       const rawStamps = Number(editOfferStamps) || 1;
-      const stamps = Math.min(12, Math.max(1, rawStamps));
+      const stamps = Math.min(50, Math.max(1, rawStamps));
       const expiry = Number(editOfferExpiryDays) > 0 ? Number(editOfferExpiryDays) : undefined;
       const existingOffers = selectedBusiness.active_offers || [];
       const updatedOffers = existingOffers.map((o) => {
@@ -1615,8 +1556,8 @@ function OwnerDashboardContent() {
             ...o,
             title: editOfferTitle.trim(),
             stamps_needed: stamps,
-            badge: `${stamps} Stamps Milestone`,
-            desc: editOfferDesc.trim() || `Unlocked when customer reaches ${stamps} stamps on their digital pass`,
+            badge: `${stamps} Stamps Reward`,
+            desc: editOfferDesc.trim() || `Unlocked after completing ${stamps} stamps`,
             icon: o.icon || 'gift',
             expiry_days: expiry,
           };
@@ -3145,20 +3086,6 @@ function OwnerDashboardContent() {
                       />
                     </div>
 
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                        Order Bill Amount (₹)
-                      </label>
-                      <div className="relative">
-                        <span className="absolute left-4 top-2.5 text-slate-400 font-bold text-sm">₹</span>
-                        <input
-                          type="number"
-                          value={counterSpendAmount}
-                          onChange={(e) => setCounterSpendAmount(e.target.value)}
-                          className="w-full pl-8 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0F172A] focus:bg-white"
-                        />
-                      </div>
-                    </div>
 
                     <button
                       type="submit"
@@ -3324,23 +3251,6 @@ function OwnerDashboardContent() {
                         </div>
                       </div>
 
-                      {/* Bill Amount */}
-                      <div>
-                        <div className="flex items-center justify-between mb-1.5">
-                          <label className="block text-xs font-semibold text-slate-700">
-                            Order Bill Amount (₹)
-                          </label>
-                        </div>
-                        <div className="relative">
-                          <span className="absolute left-4 top-2.5 text-slate-400 font-bold text-sm">₹</span>
-                          <input
-                            type="number"
-                            value={counterSpendAmount}
-                            onChange={(e) => setCounterSpendAmount(e.target.value)}
-                            className="w-full pl-8 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/50 text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#0F172A] focus:bg-white"
-                          />
-                        </div>
-                      </div>
 
                       {/* Action Buttons */}
                       <div className="space-y-2.5 pt-2">
@@ -3561,13 +3471,13 @@ function OwnerDashboardContent() {
               );
             })()}
 
-            {/* SECTION 2: ACTIVE RUNNING REWARDS ON DIGITAL PASS */}
+            {/* SECTION 2: ACTIVE REWARDS */}
             {(() => {
               const totalStamps = settingsStamps || selectedBusiness?.reward_rule?.stamps_needed || 6;
               const grandTitle = settingsRewardTitle || selectedBusiness?.reward_rule?.reward_title || 'Free Specialty Beverage';
               const minBill = settingsMinOrder || selectedBusiness?.reward_rule?.min_order_for_stamp || 150;
               const allOffers = selectedBusiness?.active_offers || [];
-              const milestoneOffers = allOffers.filter((o) => (o.stamps_needed || 0) < totalStamps);
+              const additionalRewards = allOffers.filter((o) => o.title !== grandTitle || (o.stamps_needed || 0) !== totalStamps);
 
               return (
                 <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-100 card-soft-shadow space-y-4">
@@ -3578,9 +3488,9 @@ function OwnerDashboardContent() {
                       </div>
                       <div>
                         <h3 className="font-display font-bold text-sm text-[#0F172A] flex items-center gap-2">
-                          <span>Active Rewards on Pass</span>
+                          <span>Active Rewards</span>
                           <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                            {1 + milestoneOffers.length} Active
+                            {1 + additionalRewards.length} Active
                           </span>
                         </h3>
                       </div>
@@ -3590,28 +3500,28 @@ function OwnerDashboardContent() {
                       type="button"
                       onClick={() => {
                         sound.playClick();
-                        setNewOfferStamps(Math.max(1, Math.floor(totalStamps / 2)));
+                        setNewOfferStamps(8);
                         setNewOfferTitle('');
                         setNewOfferDesc('');
-                        setNewOfferBadge(`${Math.max(1, Math.floor(totalStamps / 2))} Stamps Milestone`);
+                        setNewOfferBadge('8 Stamps Reward');
                         setNewOfferExpiryDays('30');
                         setShowCreateOfferModal(true);
                       }}
                       className="px-3.5 py-1.5 rounded-xl bg-[#0F172A] hover:bg-black text-white text-xs font-bold shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 shrink-0"
                     >
                       <Plus className="w-3.5 h-3.5 text-emerald-400 stroke-[3]" />
-                      <span>Add Milestone Reward</span>
+                      <span>+ Create Reward</span>
                     </button>
                   </div>
 
-                  <div className={`grid gap-3 ${milestoneOffers.length > 0 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
-                    {/* CARD 1: GRAND PRIZE REWARD (COMPLETED PASS) */}
+                  <div className={`grid gap-3 ${additionalRewards.length > 0 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
+                    {/* CARD 1: PRIMARY GRAND REWARD (SPECIALTY BEVERAGE REWARD) */}
                     <div className="p-4 rounded-2xl border-2 border-amber-300/80 bg-linear-to-br from-amber-50/70 via-white to-amber-50/30 flex flex-col justify-between shadow-2xs">
                       <div className="space-y-2">
                         <div className="flex items-center justify-between gap-2">
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300">
                             <Award className="w-3 h-3 text-amber-700" />
-                            <span>Grand Prize • Slot #{totalStamps}</span>
+                            <span>Unlock at {totalStamps} Stamps</span>
                           </span>
                           <span className="inline-flex items-center gap-1 text-[11px] font-mono font-bold text-emerald-700">
                             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
@@ -3624,13 +3534,13 @@ function OwnerDashboardContent() {
                             {grandTitle}
                           </h4>
                           <p className="text-xs text-slate-600 mt-0.5">
-                            Unlocked automatically when customer completes all <b>{totalStamps} stamps</b>.
+                            Unlocked automatically when customer completes <b>{totalStamps} stamps</b>.
                           </p>
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2 pt-0.5 text-[10px] font-mono text-slate-500">
-                          <span className="px-2 py-0.5 rounded-md bg-white border border-slate-200">
-                            Stamps: {totalStamps}
+                          <span className="px-2 py-0.5 rounded-md bg-white border border-slate-200 font-bold text-slate-700">
+                            Unlock at: {totalStamps} Stamps
                           </span>
                         </div>
                       </div>
@@ -3653,8 +3563,8 @@ function OwnerDashboardContent() {
                       </div>
                     </div>
 
-                    {/* CARDS FOR ACTIVE MILESTONE REWARDS */}
-                    {milestoneOffers.map((offer) => (
+                    {/* CARDS FOR ADDITIONAL ACTIVE REWARDS */}
+                    {additionalRewards.map((offer) => (
                       <div
                         key={offer.id}
                         className="p-4 rounded-2xl border border-slate-200 bg-white flex flex-col justify-between shadow-2xs hover:border-slate-300 transition-all"
@@ -3663,7 +3573,7 @@ function OwnerDashboardContent() {
                           <div className="flex items-center justify-between gap-2">
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-emerald-50 text-emerald-800 border border-emerald-200">
                               <Gift className="w-3 h-3 text-emerald-600" />
-                              <span>Milestone • Slot #{offer.stamps_needed}</span>
+                              <span>Unlock at {offer.stamps_needed} Stamps</span>
                             </span>
                             <span className="inline-flex items-center gap-1 text-[11px] font-mono font-bold text-emerald-700">
                               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
@@ -3676,13 +3586,13 @@ function OwnerDashboardContent() {
                               {offer.title}
                             </h4>
                             <p className="text-xs text-slate-600 mt-0.5">
-                              {offer.desc || `Unlocked at ${offer.stamps_needed} stamps on digital pass.`}
+                              {offer.desc || `Unlocked after completing ${offer.stamps_needed} stamps.`}
                             </p>
                           </div>
 
                           <div className="flex flex-wrap items-center gap-2 pt-0.5 text-[10px] font-mono text-slate-500">
                             <span className="px-2 py-0.5 rounded-md bg-slate-50 border border-slate-200 font-bold text-slate-700">
-                              Stamp #{offer.stamps_needed}
+                              Unlock at: {offer.stamps_needed} Stamps
                             </span>
                             <span className="px-2 py-0.5 rounded-md bg-slate-50 border border-slate-200 flex items-center gap-1">
                               <Clock className="w-3 h-3 text-slate-400" />
@@ -4754,17 +4664,31 @@ function OwnerDashboardContent() {
                       </div>
                     </div>
                     {isPhoneVerified ? (
-                      <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full flex items-center gap-1 shrink-0">
-                        <Check className="w-3 h-3 text-emerald-600" />
-                        <span>Verified</span>
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full flex items-center gap-1 shrink-0">
+                          <Check className="w-3 h-3 text-emerald-600" />
+                          <span>Verified</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            sound.playClick();
+                            setVerifyPhoneInput(displayPhone);
+                            setVerifyPhoneError(null);
+                            setVerifyPhoneSuccess(null);
+                            setShowPhoneVerifyModal(true);
+                          }}
+                          className="text-[11px] font-semibold text-slate-500 hover:text-slate-800 cursor-pointer underline"
+                        >
+                          Change
+                        </button>
+                      </div>
                     ) : (
                       <button
                         type="button"
                         onClick={() => {
                           sound.playClick();
                           setVerifyPhoneInput(displayPhone);
-                          setVerifyPhoneStep('input');
                           setVerifyPhoneError(null);
                           setVerifyPhoneSuccess(null);
                           setShowPhoneVerifyModal(true);
@@ -4772,8 +4696,8 @@ function OwnerDashboardContent() {
                         className="text-[11px] font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200/90 px-3 py-1 rounded-full flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 shadow-xs shrink-0"
                         title="Verify mobile number"
                       >
-                        <ShieldAlert className="w-3 h-3 text-amber-600" />
-                        <span>Verify</span>
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>{displayPhone ? 'Verify' : 'Add Number'}</span>
                       </button>
                     )}
                   </div>
@@ -5026,21 +4950,6 @@ function OwnerDashboardContent() {
                           <label className="block text-xs font-semibold text-slate-700">
                             Contact Phone Number
                           </label>
-                          {settingsPhone && !(selectedBusiness?.phone_verified || (selectedBusiness?.reward_rule as any)?.phone_verified) && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setVerifyPhoneInput(settingsPhone);
-                                setVerifyPhoneStep('input');
-                                setVerifyPhoneError(null);
-                                setVerifyPhoneSuccess(null);
-                                setShowPhoneVerifyModal(true);
-                              }}
-                              className="text-[10px] font-semibold text-amber-700 hover:text-amber-800 underline cursor-pointer"
-                            >
-                              Verify now
-                            </button>
-                          )}
                         </div>
                         <input
                           type="tel"
@@ -5135,7 +5044,7 @@ function OwnerDashboardContent() {
               </div>
             )}
 
-            {/* Focused Modal: Phone Verification Modal */}
+            {/* Focused Modal: Phone Verification Modal (Direct 1-step, No OTP) */}
             {showPhoneVerifyModal && (
               <div
                 className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
@@ -5147,15 +5056,15 @@ function OwnerDashboardContent() {
                 >
                   <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center border border-amber-200/80">
-                        <Phone className="w-5 h-5 text-amber-600" />
+                      <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center border border-emerald-200/80">
+                        <Phone className="w-5 h-5 text-emerald-600" />
                       </div>
                       <div>
                         <h3 className="font-display font-bold text-base text-slate-900">
                           Verify Phone Number
                         </h3>
                         <p className="text-[11px] text-slate-500">
-                          Confirm your merchant mobile number for store alerts
+                          Save your merchant mobile number for store alerts & customer passes
                         </p>
                       </div>
                     </div>
@@ -5175,125 +5084,55 @@ function OwnerDashboardContent() {
                   )}
 
                   {verifyPhoneSuccess && (
-                    <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-semibold text-emerald-800">
-                      {verifyPhoneSuccess}
+                    <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-semibold text-emerald-800 flex items-center gap-2">
+                      <Check className="w-4 h-4 text-emerald-600" />
+                      <span>{verifyPhoneSuccess}</span>
                     </div>
                   )}
 
-                  {verifyPhoneStep === 'input' ? (
-                    <form onSubmit={handleSendPhoneOtp} className="space-y-4">
-                      <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                          Mobile Number
-                        </label>
-                        <input
-                          type="tel"
-                          value={verifyPhoneInput}
-                          onChange={(e) => setVerifyPhoneInput(e.target.value)}
-                          placeholder="e.g. +91 98765 43210"
-                          className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-mono font-medium focus:outline-none focus:ring-2 focus:ring-[#0F172A]"
-                          autoFocus
-                          required
-                        />
-                        <p className="text-[11px] text-slate-400 mt-1">
-                          We will send a 4-digit verification code to this number.
-                        </p>
-                      </div>
+                  <form onSubmit={handleDirectVerifyPhone} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                        Merchant Mobile Number
+                      </label>
+                      <input
+                        type="tel"
+                        value={verifyPhoneInput}
+                        onChange={(e) => setVerifyPhoneInput(e.target.value)}
+                        placeholder="e.g. +91 98765 43210"
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-mono font-medium focus:outline-none focus:ring-2 focus:ring-[#0F172A]"
+                        autoFocus
+                        required
+                      />
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        Enter your 10-digit mobile number to verify and link with this store.
+                      </p>
+                    </div>
 
-                      <div className="flex items-center gap-2 pt-2">
-                        <button
-                          type="button"
-                          onClick={() => setShowPhoneVerifyModal(false)}
-                          className="flex-1 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          type="submit"
-                          disabled={isVerifyPhoneLoading || !verifyPhoneInput.trim()}
-                          className="flex-1 py-2.5 rounded-xl bg-[#0F172A] hover:bg-slate-800 text-white text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-                        >
-                          {isVerifyPhoneLoading ? (
-                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                          ) : (
-                            <>
-                              <span>Send Code</span>
-                              <ArrowRight className="w-3.5 h-3.5" />
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    </form>
-                  ) : (
-                    <form onSubmit={handleVerifyPhoneOtp} className="space-y-4">
-                      <div>
-                        <div className="flex items-center justify-between mb-1.5">
-                          <label className="block text-xs font-bold text-slate-700">
-                            Enter 4-Digit Code
-                          </label>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setVerifyPhoneStep('input');
-                              setVerifyPhoneError(null);
-                            }}
-                            className="text-[11px] font-semibold text-indigo-600 hover:underline cursor-pointer"
-                          >
-                            Change Number
-                          </button>
-                        </div>
-                        <input
-                          type="text"
-                          maxLength={6}
-                          value={verifyPhoneOtp}
-                          onChange={(e) => setVerifyPhoneOtp(e.target.value)}
-                          placeholder="4-digit code"
-                          className="w-full text-center tracking-[0.5em] text-lg font-bold font-mono px-3.5 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#0F172A]"
-                          autoFocus
-                          required
-                        />
-                        {verifyPhoneTestOtp && (
-                          <div className="mt-2.5 p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-[11px] text-slate-600 flex items-center justify-between">
-                            <span>Demo Code: <strong className="font-mono text-slate-900">{verifyPhoneTestOtp}</strong></span>
-                            <button
-                              type="button"
-                              onClick={() => setVerifyPhoneOtp(verifyPhoneTestOtp)}
-                              className="text-[10px] font-bold text-indigo-600 bg-white border border-indigo-200 px-2 py-0.5 rounded-md hover:bg-indigo-50 cursor-pointer"
-                            >
-                              Auto-fill
-                            </button>
-                          </div>
+                    <div className="flex items-center gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowPhoneVerifyModal(false)}
+                        className="flex-1 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isVerifyPhoneLoading || !verifyPhoneInput.trim()}
+                        className="flex-1 py-2.5 rounded-xl bg-[#0F172A] hover:bg-slate-800 text-white text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      >
+                        {isVerifyPhoneLoading ? (
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>Save &amp; Verify Number</span>
+                          </>
                         )}
-                      </div>
-
-                      <div className="flex items-center gap-2 pt-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setVerifyPhoneStep('input');
-                            setVerifyPhoneError(null);
-                          }}
-                          className="flex-1 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
-                        >
-                          Back
-                        </button>
-                        <button
-                          type="submit"
-                          disabled={isVerifyPhoneLoading || verifyPhoneOtp.trim().length < 4}
-                          className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-                        >
-                          {isVerifyPhoneLoading ? (
-                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                          ) : (
-                            <>
-                              <Check className="w-3.5 h-3.5" />
-                              <span>Confirm &amp; Verify</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    </form>
-                  )}
+                      </button>
+                    </div>
+                  </form>
                 </div>
               </div>
             )}
@@ -6516,7 +6355,7 @@ function OwnerDashboardContent() {
         )}
 
         {/* ========================================================================= */}
-        {/* CREATE MILESTONE REWARD MODAL                                              */}
+        {/* CREATE REWARD MODAL                                                        */}
         {/* ========================================================================= */}
         {showCreateOfferModal && (
           <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
@@ -6528,10 +6367,10 @@ function OwnerDashboardContent() {
                   </div>
                   <div>
                     <h3 className="font-display font-bold text-base text-[#0F172A]">
-                      Add Milestone Reward
+                      Create Reward
                     </h3>
                     <p className="text-xs text-slate-500">
-                      Reward customers mid-way on their pass to boost visit frequency
+                      Create an independent loyalty reward for your customers
                     </p>
                   </div>
                 </div>
@@ -6547,13 +6386,13 @@ function OwnerDashboardContent() {
               <form onSubmit={handleCreateNewOffer} className="space-y-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Reward Title / Treat Name *
+                    Reward Title *
                   </label>
                   <input
                     type="text"
                     value={newOfferTitle}
                     onChange={(e) => setNewOfferTitle(e.target.value)}
-                    placeholder="e.g. Welcome Treat, Artisan Donut, or Sourdough Bite"
+                    placeholder="e.g. Free Hair Spa"
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#0F172A]"
                     required
                   />
@@ -6563,14 +6402,13 @@ function OwnerDashboardContent() {
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <label className="block text-xs font-semibold text-slate-700">
-                        Unlock at Stamp Slot *
+                        Unlock at — number of stamps required *
                       </label>
-                      <span className="text-[10px] text-slate-400 font-mono">Max 12</span>
                     </div>
                     <input
                       type="number"
                       min={1}
-                      max={12}
+                      max={50}
                       value={newOfferStamps}
                       onChange={(e) => {
                         const raw = e.target.value;
@@ -6579,11 +6417,11 @@ function OwnerDashboardContent() {
                           return;
                         }
                         const num = Number(raw);
-                        const clamped = Math.min(12, Math.max(1, num));
+                        const clamped = Math.min(50, Math.max(1, num));
                         setNewOfferStamps(clamped);
-                        setNewOfferBadge(`${clamped} Stamps Milestone`);
+                        setNewOfferBadge(`${clamped} Stamps Reward`);
                       }}
-                      placeholder="e.g. 5 (Max 12)"
+                      placeholder="e.g. 8 Stamps"
                       className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#0F172A] font-mono bg-slate-50/50"
                       required
                     />
@@ -6609,13 +6447,13 @@ function OwnerDashboardContent() {
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Description / Terms (Optional)
+                    Description
                   </label>
                   <input
                     type="text"
                     value={newOfferDesc}
                     onChange={(e) => setNewOfferDesc(e.target.value)}
-                    placeholder="e.g. Earned at 3 stamps on your digital pass"
+                    placeholder="e.g. Get a free hair spa after completing 8 stamps."
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#0F172A]"
                   />
                 </div>
@@ -6638,7 +6476,7 @@ function OwnerDashboardContent() {
                     ) : (
                       <>
                         <Check className="w-3.5 h-3.5 text-emerald-400 stroke-[3]" />
-                        <span>Activate Milestone Reward</span>
+                        <span>Create Reward</span>
                       </>
                     )}
                   </button>
@@ -6649,7 +6487,7 @@ function OwnerDashboardContent() {
         )}
 
         {/* ========================================================================= */}
-        {/* EDIT MILESTONE REWARD MODAL                                                */}
+        {/* EDIT REWARD MODAL                                                          */}
         {/* ========================================================================= */}
         {showEditOfferModal && editingOffer && (
           <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
@@ -6661,10 +6499,10 @@ function OwnerDashboardContent() {
                   </div>
                   <div>
                     <h3 className="font-display font-bold text-base text-[#0F172A]">
-                      Edit Milestone Reward
+                      Edit Reward
                     </h3>
                     <p className="text-xs text-slate-500">
-                      Update title, unlock slot, or minimum bill for this treat
+                      Update reward title, unlock stamps, or expiry
                     </p>
                   </div>
                 </div>
@@ -6680,13 +6518,13 @@ function OwnerDashboardContent() {
               <form onSubmit={handleSaveEditedOffer} className="space-y-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Reward Title / Treat Name *
+                    Reward Title *
                   </label>
                   <input
                     type="text"
                     value={editOfferTitle}
                     onChange={(e) => setEditOfferTitle(e.target.value)}
-                    placeholder="e.g. Welcome Treat or Artisan Donut"
+                    placeholder="e.g. Free Hair Spa"
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#0F172A]"
                     required
                   />
@@ -6696,14 +6534,13 @@ function OwnerDashboardContent() {
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <label className="block text-xs font-semibold text-slate-700">
-                        Unlock at Stamp Slot *
+                        Unlock at — number of stamps required *
                       </label>
-                      <span className="text-[10px] text-slate-400 font-mono">Max 12</span>
                     </div>
                     <input
                       type="number"
                       min={1}
-                      max={12}
+                      max={50}
                       value={editOfferStamps}
                       onChange={(e) => {
                         const raw = e.target.value;
@@ -6712,11 +6549,11 @@ function OwnerDashboardContent() {
                           return;
                         }
                         const num = Number(raw);
-                        const clamped = Math.min(12, Math.max(1, num));
+                        const clamped = Math.min(50, Math.max(1, num));
                         setEditOfferStamps(clamped);
-                        setEditOfferBadge(`${clamped} Stamps Milestone`);
+                        setEditOfferBadge(`${clamped} Stamps Reward`);
                       }}
-                      placeholder="e.g. 5 (Max 12)"
+                      placeholder="e.g. 8 Stamps"
                       className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#0F172A] font-mono bg-slate-50/50"
                       required
                     />
@@ -6742,13 +6579,13 @@ function OwnerDashboardContent() {
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Description / Terms (Optional)
+                    Description
                   </label>
                   <input
                     type="text"
                     value={editOfferDesc}
                     onChange={(e) => setEditOfferDesc(e.target.value)}
-                    placeholder="e.g. Earned at 3 stamps on your digital pass"
+                    placeholder="e.g. Get a free hair spa after completing 8 stamps."
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#0F172A]"
                   />
                 </div>
@@ -6771,7 +6608,7 @@ function OwnerDashboardContent() {
                     ) : (
                       <>
                         <Check className="w-3.5 h-3.5 text-emerald-400 stroke-[3]" />
-                        <span>Update Milestone Reward</span>
+                        <span>Update Reward</span>
                       </>
                     )}
                   </button>

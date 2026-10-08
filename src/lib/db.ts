@@ -763,6 +763,15 @@ class RevaDatabase {
       if (rr.trial_active !== undefined && b.trial_active === undefined) b.trial_active = rr.trial_active;
     }
 
+    // Self-heal legacy 3-day trial bug to full 30 days
+    if (b.trial_active || b.subscription_status === 'trialing') {
+      const createdAtMs = b.created_at ? new Date(b.created_at).getTime() : Date.now();
+      const trialEndsMs = b.trial_ends_at ? new Date(b.trial_ends_at).getTime() : 0;
+      if (trialEndsMs && trialEndsMs - createdAtMs <= 7 * 86400000) {
+        b.trial_ends_at = new Date(createdAtMs + 30 * 86400000).toISOString();
+      }
+    }
+
     // Normalize theme_config
     b.theme_config = b.theme_config || b.reward_rule?.theme_config || {
       preset: 'clean_minimal',

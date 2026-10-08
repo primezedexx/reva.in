@@ -4,6 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -63,7 +64,8 @@ export async function GET(req: NextRequest) {
 
     const uniqueMemberships = Array.from(dedupedMap.values());
 
-    const passes = uniqueMemberships.map((m) => {
+    const passes: any[] = [];
+    for (const m of uniqueMemberships) {
       const rawBiz = m.business || allBusinesses.find((b) => b.id === m.business_id);
       const biz = rawBiz ? db.ensureBusinessOffers(rawBiz) : null;
       const stampsNeeded = biz?.reward_rule?.stamps_needed || 6;
@@ -77,8 +79,12 @@ export async function GET(req: NextRequest) {
         card_radius: 'rounded_squircle',
       };
 
-      return {
+      // 1. Primary pass for this store (e.g. Specialty Beverage)
+      passes.push({
+        id: `${biz?.slug || 'store'}_primary`,
+        rewardId: 'primary',
         slug: biz?.slug || 'store',
+        businessId: biz?.id,
         name: biz?.name || 'Local Cafe',
         category: biz?.category || biz?.reward_rule?.category || 'Café & Beverage',
         brandColor: biz?.brand_color || '#0F172A',
@@ -87,7 +93,8 @@ export async function GET(req: NextRequest) {
         totalStamps: stampsNeeded,
         rewardTitle: biz?.reward_rule?.reward_title || 'Specialty Treat',
         lastVisit: m.last_visit_at ? 'Recently' : 'Just joined',
-        minOrder: biz?.reward_rule?.min_order_for_stamp || biz?.min_order_for_stamp || 150,
+        minOrder: biz?.reward_rule?.min_order_for_stamp || biz?.min_order_for_stamp || undefined,
+        expiry_days: biz?.reward_rule?.expiry_days !== undefined ? Number(biz.reward_rule.expiry_days) : 60,
         passId: `REV-${m.id.slice(0, 8).toUpperCase()}`,
         membershipId: m.id,
         membership_id: m.id,
@@ -101,12 +108,61 @@ export async function GET(req: NextRequest) {
         city: biz?.city || biz?.reward_rule?.city,
         joined_at: m.created_at || primaryCustomer?.registered_at || primaryCustomer?.created_at || new Date().toISOString(),
         last_visit_at: m.last_visit_at,
+        last_qr_stamp_at: m.last_qr_stamp_at,
         cycle: m.total_visits || 1,
         theme_config: themeConfig,
         reward_rule: biz?.reward_rule,
         active_offers: biz?.active_offers || [],
-      };
-    });
+      });
+
+      // 2. Any additional active reward passes started by the customer on this store
+      let tierData: any = {};
+      try {
+        tierData = JSON.parse(m.tier || '{}');
+      } catch {}
+
+      if (tierData.passes && typeof tierData.passes === 'object') {
+        for (const [offerId, offerPass] of Object.entries<any>(tierData.passes)) {
+          const offer = (biz?.active_offers || []).find((o: any) => o.id === offerId);
+          if (offer) {
+            passes.push({
+              id: `${biz?.slug || 'store'}_${offer.id}`,
+              rewardId: offer.id,
+              slug: biz?.slug || 'store',
+              businessId: biz?.id,
+              name: biz?.name || 'Local Cafe',
+              category: biz?.category || biz?.reward_rule?.category || 'Café & Beverage',
+              brandColor: biz?.brand_color || '#0F172A',
+              logo_url: biz?.logo_url || '',
+              stamps: Number(offerPass.stamps) || 0,
+              totalStamps: Number(offer.stamps_needed) || 6,
+              rewardTitle: offer.title || 'Specialty Treat',
+              description: offer.desc || `Unlocked after completing ${offer.stamps_needed} stamps`,
+              lastVisit: offerPass.last_stamp_at ? 'Recently' : 'Just started',
+              minOrder: offer.min_order || undefined,
+              expiry_days: offer.expiry_days !== undefined ? Number(offer.expiry_days) : undefined,
+              passId: `REV-${offer.id.slice(0, 8).toUpperCase()}`,
+              membershipId: m.id,
+              membership_id: m.id,
+              googleReviewUrl: biz?.google_review_url || biz?.reward_rule?.google_review_url,
+              phone: biz?.phone || biz?.reward_rule?.phone,
+              instagram_url: biz?.instagram_url || biz?.reward_rule?.instagram_url,
+              maps_url: biz?.maps_url || biz?.reward_rule?.maps_url,
+              address: biz?.address || biz?.reward_rule?.address,
+              area: biz?.area || biz?.reward_rule?.area,
+              city: biz?.city || biz?.reward_rule?.city,
+              joined_at: offerPass.started_at || m.created_at,
+              last_visit_at: offerPass.last_stamp_at || m.last_visit_at,
+              last_qr_stamp_at: m.last_qr_stamp_at,
+              cycle: 1,
+              theme_config: themeConfig,
+              reward_rule: biz?.reward_rule,
+              active_offers: biz?.active_offers || [],
+            });
+          }
+        }
+      }
+    }
 
     // 3. Resolve unified customer details (real phone, real email, real name, avatar)
     const realPhoneCustomer = matchedCustomers.find(
@@ -194,7 +250,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { businessSlug, phone, name, email, userId, voucherCodes } = await req.json();
+    const { businessSlug, phone, name, email, userId, voucherCodes, startRewardId } = await req.json();
 
     if (!businessSlug || (!phone && !email)) {
       return NextResponse.json(
@@ -221,6 +277,23 @@ export async function POST(req: NextRequest) {
     });
 
     const membership = await db.createOrGetMembership(business.id, customer.id);
+
+    if (startRewardId) {
+      let tierData: any = {};
+      try {
+        tierData = JSON.parse(membership.tier || '{}');
+      } catch {
+        tierData = { tier: membership.tier || 'Regular' };
+      }
+      if (!tierData.passes) tierData.passes = {};
+      if (!tierData.passes[startRewardId]) {
+        tierData.passes[startRewardId] = { stamps: 0, started_at: new Date().toISOString() };
+        membership.tier = JSON.stringify(tierData);
+        try {
+          await supabaseAdmin.from('memberships').update({ tier: membership.tier }).eq('id', membership.id);
+        } catch {}
+      }
+    }
 
     // Fetch live claimed rewards for this membership
     const membershipClaims = await db.getRewardsClaimedForMembership(membership.id);

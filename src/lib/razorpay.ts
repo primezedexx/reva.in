@@ -128,9 +128,20 @@ export function getSubscriptionRemainingInfo(business: {
   const planName = plan.charAt(0).toUpperCase() + plan.slice(1);
 
   if (isTrial) {
-    const trialEnds = business.trial_ends_at
+    let trialEnds = business.trial_ends_at
       ? new Date(business.trial_ends_at)
       : new Date(Date.now() + TRIAL_DAYS * 86400000);
+
+    // Safeguard for legacy accounts created during 3-day trial bug:
+    // If trial ends within <= 7 days of account creation, correct it to full 30 days
+    if (business.created_at) {
+      const createdTime = new Date(business.created_at).getTime();
+      const trialSpanDays = (trialEnds.getTime() - createdTime) / 86400000;
+      if (trialSpanDays <= 7 && trialSpanDays >= 0) {
+        trialEnds = new Date(createdTime + TRIAL_DAYS * 86400000);
+      }
+    }
+
     const now = new Date();
     const diffMs = trialEnds.getTime() - now.getTime();
     const daysRemaining = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
