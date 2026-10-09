@@ -9,14 +9,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import jsQR from 'jsqr';
-import {
-  MultiFormatReader,
-  BarcodeFormat,
-  DecodeHintType,
-  RGBLuminanceSource,
-  BinaryBitmap,
-  HybridBinarizer,
-} from '@zxing/library';
+import QrScanner from 'qr-scanner';
 import {
   Camera,
   X,
@@ -100,15 +93,14 @@ export default function CameraQrScannerModal({
   const streamRef = useRef<MediaStream | null>(null);
   const isStartingCameraRef = useRef<boolean>(false);
 
-  // Singleton hardware BarcodeDetector & Google ZXing MultiFormatReader
-  const barcodeDetectorRef = useRef<any>(null);
-  const zxingReaderRef = useRef<MultiFormatReader | null>(null);
+  // High-performance QrScanner singleton (Web Worker + Hardware BarcodeDetector)
+  const qrScannerRef = useRef<QrScanner | null>(null);
   const isScanningFrameRef = useRef<boolean>(false);
+  const scanFrameCountRef = useRef<number>(0);
 
   // Synchronous atomic lock to strictly prevent duplicate multi-scans
   const isProcessingRef = useRef<boolean>(false);
   const streamGenRef = useRef<number>(0);
-  const scanFrameCountRef = useRef<number>(0);
 
   const [cameraState, setCameraState] = useState<'prompt' | 'active' | 'denied' | 'unsupported'>('prompt');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -158,43 +150,18 @@ export default function CameraQrScannerModal({
   const liveSecs = secondsRemaining % 60;
   const isCurrentlyInCooldown = Boolean(isCooldownActive && secondsRemaining > 0);
 
-  // Initialize native BarcodeDetector and ZXing Reader ONCE on client mount
-  useEffect(() => {
-    if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
-      try {
-        // @ts-expect-error Native BarcodeDetector
-        barcodeDetectorRef.current = new window.BarcodeDetector({ formats: ['qr_code'] });
-      } catch (e) {
-        console.warn('Native BarcodeDetector initialization fallback to ZXing:', e);
-      }
-    }
-
-    try {
-      const hints = new Map();
-      hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.QR_CODE]);
-      hints.set(DecodeHintType.TRY_HARDER, true);
-      const reader = new MultiFormatReader();
-      reader.setHints(hints);
-      zxingReaderRef.current = reader;
-    } catch (e) {
-      console.warn('ZXing reader initialization error:', e);
-    }
-  }, []);
-
-  // Stop camera tracks cleanly
+  // Stop camera tracks and scanner cleanly
   const stopCameraStream = useCallback(() => {
     if (animationFrameId.current) {
       cancelAnimationFrame(animationFrameId.current);
       animationFrameId.current = null;
     }
-    isScanningFrameRef.current = false;
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => {
-        try {
-          track.stop();
-        } catch {}
-      });
-      streamRef.current = null;
+    if (qrScannerRef.current) {
+      try {
+        qrScannerRef.current.stop();
+        qrScannerRef.current.destroy();
+      } catch {}
+      qrScannerRef.current = null;
     }
     if (videoRef.current) {
       videoRef.current.srcObject = null;
@@ -332,6 +299,11 @@ export default function CameraQrScannerModal({
     setDifferentStoreModal(null);
     isProcessingRef.current = false;
     setIsProcessing(false);
+    if (qrScannerRef.current) {
+      try {
+        qrScannerRef.current.start();
+      } catch {}
+    }
     startScanLoop();
   };
 
@@ -344,6 +316,12 @@ export default function CameraQrScannerModal({
     if (animationFrameId.current) {
       cancelAnimationFrame(animationFrameId.current);
       animationFrameId.current = null;
+    }
+
+    if (qrScannerRef.current) {
+      try {
+        qrScannerRef.current.stop();
+      } catch {}
     }
 
     try {
@@ -504,7 +482,7 @@ export default function CameraQrScannerModal({
     }
   }, [stopCameraStream]);
 
-  // Frame scanner loop (UPI-grade sub-second <100ms multi-engine detection)
+  // Synchronous frame scanner loop (Zero-latency 60fps jsQR companion engine)
   const executeFrameScan = useCallback(async () => {
     if (isProcessingRef.current || !videoRef.current) return;
     const video = videoRef.current;
@@ -522,85 +500,39 @@ export default function CameraQrScannerModal({
     try {
       scanFrameCountRef.current++;
 
-      // TIER 1: Native hardware BarcodeDetector (<2ms GPU/NPU on Android/Chrome/iOS)
-      if (barcodeDetectorRef.current) {
-        try {
-          const barcodes = await barcodeDetectorRef.current.detect(video);
-          if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
-            handleDecodedQr(barcodes[0].rawValue);
-            return;
-          }
-        } catch {}
-      }
-
-      // TIER 2 & 3: High-Resolution Fixed-Canvas Pipeline (ZXing HybridBinarizer + jsQR)
       if (canvasRef.current) {
         const canvas = canvasRef.current;
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
         if (ctx) {
           const vw = video.videoWidth;
           const vh = video.videoHeight;
+          const CANVAS_DIM = 360;
 
-          // Stable fixed processing canvas (no GC memory thrashing / reallocations)
-          const CANVAS_DIM = 540;
           if (canvas.width !== CANVAS_DIM || canvas.height !== CANVAS_DIM) {
             canvas.width = CANVAS_DIM;
             canvas.height = CANVAS_DIM;
           }
 
-          // Alternating passes:
-          // 80% frames: Viewfinder center crop (where customer focuses the stand)
-          // 20% frames: Full video frame (in case the QR is near an edge or held high/low)
-          const isFullFramePass = scanFrameCountRef.current % 4 === 0;
-
-          if (isFullFramePass) {
-            ctx.drawImage(video, 0, 0, vw, vh, 0, 0, CANVAS_DIM, CANVAS_DIM);
-          } else {
-            const minDim = Math.min(vw, vh);
-            const cropSize = Math.floor(minDim * 0.88);
-            const sx = Math.floor((vw - cropSize) / 2);
-            const sy = Math.floor((vh - cropSize) / 2);
-            ctx.drawImage(video, sx, sy, cropSize, cropSize, 0, 0, CANVAS_DIM, CANVAS_DIM);
-          }
+          // Center 85% crop where counter stand is targeted
+          const minDim = Math.min(vw, vh);
+          const cropSize = Math.floor(minDim * 0.85);
+          const sx = Math.floor((vw - cropSize) / 2);
+          const sy = Math.floor((vh - cropSize) / 2);
+          ctx.drawImage(video, sx, sy, cropSize, cropSize, 0, 0, CANVAS_DIM, CANVAS_DIM);
 
           const imgData = ctx.getImageData(0, 0, CANVAS_DIM, CANVAS_DIM);
 
-          // Fast-path jsQR (ultra-fast 2ms decode for clear frames)
-          const fastCode = jsQR(imgData.data, CANVAS_DIM, CANVAS_DIM, {
-            inversionAttempts: 'dontInvert',
+          const code = jsQR(imgData.data, CANVAS_DIM, CANVAS_DIM, {
+            inversionAttempts: scanFrameCountRef.current % 3 === 0 ? 'attemptBoth' : 'dontInvert',
           });
-          if (fastCode && fastCode.data && fastCode.data.trim().length > 0) {
-            handleDecodedQr(fastCode.data);
+          if (code && code.data && code.data.trim().length > 0) {
+            handleDecodedQr(code.data);
             return;
-          }
-
-          // Deep-path ZXing HybridBinarizer (adaptive 8x8 block thresholding for dark rooms, counter glare & angles)
-          if (zxingReaderRef.current) {
-            try {
-              const lumSrc = new RGBLuminanceSource(imgData.data, CANVAS_DIM, CANVAS_DIM);
-              const bitmap = new BinaryBitmap(new HybridBinarizer(lumSrc));
-              const result = zxingReaderRef.current.decode(bitmap);
-              if (result && result.getText() && result.getText().trim().length > 0) {
-                handleDecodedQr(result.getText());
-                return;
-              }
-            } catch {
-              // Expected NotFoundException when frame has no QR code
-            }
-          }
-
-          // Fallback: Inverted QR check on even frames
-          if (scanFrameCountRef.current % 2 === 0) {
-            const invertedCode = jsQR(imgData.data, CANVAS_DIM, CANVAS_DIM, {
-              inversionAttempts: 'onlyInvert',
-            });
-            if (invertedCode && invertedCode.data && invertedCode.data.trim().length > 0) {
-              handleDecodedQr(invertedCode.data);
-              return;
-            }
           }
         }
       }
+    } catch {
+      // Ignore frame decode exceptions
     } finally {
       isScanningFrameRef.current = false;
       if (!isProcessingRef.current) {
@@ -617,7 +549,7 @@ export default function CameraQrScannerModal({
     animationFrameId.current = requestAnimationFrame(executeFrameScan);
   }, [executeFrameScan]);
 
-  // Robust Camera Stream Initiator (Instant, Zero-Flicker, Continuous Autofocus)
+  // UPI-Grade Camera & Worker Scanner Initiator (<100ms Instant Scan)
   const startCamera = useCallback(async (mode: 'environment' | 'user') => {
     if (isStartingCameraRef.current) return;
     isStartingCameraRef.current = true;
@@ -636,109 +568,129 @@ export default function CameraQrScannerModal({
       return;
     }
 
-    let stream: MediaStream | null = null;
-
-    try {
-      // UPI-Grade Camera Constraints (crisp 1080p/720p stream without blurry downsampling)
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: mode === 'user' ? 'user' : { ideal: 'environment' },
-          width: { ideal: 1920, min: 640 },
-          height: { ideal: 1080, min: 480 },
-        },
-        audio: false,
-      });
-    } catch {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: false,
-        });
-      } catch (err) {
-        isStartingCameraRef.current = false;
-        if (currentGen !== streamGenRef.current) return;
-        console.warn('Camera getUserMedia failed:', err);
-        setCameraState('denied');
-        if (err instanceof DOMException && err.name === 'NotAllowedError') {
-          setErrorMessage('Camera access was blocked. Please enable camera permissions in your browser.');
-        } else {
-          setErrorMessage('Could not open camera stream. Please check camera permissions.');
-        }
-        return;
-      }
-    }
-
-    if (currentGen !== streamGenRef.current) {
-      stream?.getTracks().forEach((t) => t.stop());
+    if (!videoRef.current) {
       isStartingCameraRef.current = false;
       return;
     }
 
-    streamRef.current = stream;
-    if (videoRef.current) {
-      videoRef.current.srcObject = stream;
-      videoRef.current.setAttribute('playsinline', 'true');
-      videoRef.current.setAttribute('muted', 'true');
-      videoRef.current.setAttribute('autoplay', 'true');
-      try {
-        await videoRef.current.play();
-      } catch (playErr) {
-        console.warn('Video play error:', playErr);
-      }
-    }
-
-    // Apply continuous auto-focus, exposure, and white-balance for fast QR capture
     try {
-      const track = stream.getVideoTracks()[0];
-      const capabilities = track.getCapabilities?.() as any;
-      setHasTorch(Boolean(capabilities?.torch));
+      QrScanner.WORKER_PATH = '/qr-scanner-worker.min.js';
 
-      if (capabilities) {
-        const advanced: any = {};
-        if (capabilities.focusMode?.includes('continuous')) advanced.focusMode = 'continuous';
-        if (capabilities.exposureMode?.includes('continuous')) advanced.exposureMode = 'continuous';
-        if (capabilities.whiteBalanceMode?.includes('continuous')) advanced.whiteBalanceMode = 'continuous';
-        if (Object.keys(advanced).length > 0) {
-          try {
-            await track.applyConstraints({ advanced: [advanced] });
-          } catch {}
+      const scanner = new QrScanner(
+        videoRef.current,
+        (result) => {
+          const raw = typeof result === 'string' ? result : result.data;
+          if (raw && raw.trim().length > 0) {
+            handleDecodedQr(raw);
+          }
+        },
+        {
+          preferredCamera: mode,
+          maxScansPerSecond: 30,
+          highlightScanRegion: false,
+          highlightCodeOutline: false,
+          returnDetailedScanResult: true,
+          calculateScanRegion: (video) => {
+            const minDim = Math.min(video.videoWidth, video.videoHeight);
+            const size = Math.round(minDim * 0.88);
+            return {
+              x: Math.round((video.videoWidth - size) / 2),
+              y: Math.round((video.videoHeight - size) / 2),
+              width: size,
+              height: size,
+              downScaledWidth: 400,
+              downScaledHeight: 400,
+            };
+          },
         }
-      }
-    } catch {
-      setHasTorch(false);
-    }
+      );
 
-    setCameraState('active');
-    isStartingCameraRef.current = false;
-    startScanLoop();
-  }, [stopCameraStream, startScanLoop]);
+      qrScannerRef.current = scanner;
+      await scanner.start();
+
+      if (currentGen !== streamGenRef.current) {
+        scanner.stop();
+        scanner.destroy();
+        qrScannerRef.current = null;
+        isStartingCameraRef.current = false;
+        return;
+      }
+
+      setCameraState('active');
+
+      // Check flash availability
+      try {
+        const flashAvailable = await scanner.hasFlash();
+        setHasTorch(flashAvailable);
+      } catch {
+        setHasTorch(false);
+      }
+
+      // Macro focus & zoom optimizations
+      try {
+        const stream = videoRef.current.srcObject as MediaStream;
+        if (stream) {
+          streamRef.current = stream;
+          const track = stream.getVideoTracks()[0];
+          const caps = (track?.getCapabilities?.() || {}) as any;
+          const adv: any = {};
+          if (caps.focusMode?.includes('continuous')) adv.focusMode = 'continuous';
+          if (caps.exposureMode?.includes('continuous')) adv.exposureMode = 'continuous';
+          if (caps.zoom && caps.zoom.max && caps.zoom.max >= 1.2) {
+            adv.zoom = Math.min(caps.zoom.max, 1.2);
+          }
+          if (Object.keys(adv).length > 0) {
+            await track.applyConstraints({ advanced: [adv] });
+          }
+        }
+      } catch {}
+
+      isStartingCameraRef.current = false;
+      startScanLoop();
+    } catch (err) {
+      isStartingCameraRef.current = false;
+      if (currentGen !== streamGenRef.current) return;
+      console.warn('Camera initiation error:', err);
+      setCameraState('denied');
+      if (err instanceof DOMException && err.name === 'NotAllowedError') {
+        setErrorMessage('Camera access was blocked. Please enable camera permissions in your browser.');
+      } else {
+        setErrorMessage('Could not open camera stream. Please check camera permissions.');
+      }
+    }
+  }, [stopCameraStream, handleDecodedQr, startScanLoop]);
 
   // Toggle torch / flashlight
   const toggleTorch = async () => {
-    if (!streamRef.current || !hasTorch) return;
+    if (!qrScannerRef.current || !hasTorch) return;
     try {
-      const track = streamRef.current.getVideoTracks()[0];
-      const nextState = !isTorchOn;
-      // @ts-expect-error Torch advanced constraint
-      await track.applyConstraints({ advanced: [{ torch: nextState }] });
-      setIsTorchOn(nextState);
+      await qrScannerRef.current.toggleFlash();
+      setIsTorchOn(qrScannerRef.current.isFlashOn());
     } catch (err) {
       console.warn('Failed to toggle torch:', err);
     }
   };
 
   // Flip camera between back and front
-  const toggleCameraFacing = () => {
+  const toggleCameraFacing = async () => {
     sound.playClick();
     const nextMode = facingMode === 'environment' ? 'user' : 'environment';
     setFacingMode(nextMode);
-    startCamera(nextMode);
+    if (qrScannerRef.current) {
+      try {
+        await qrScannerRef.current.setCamera(nextMode);
+      } catch {
+        startCamera(nextMode);
+      }
+    } else {
+      startCamera(nextMode);
+    }
   };
 
   // Lifecycle on modal Open/Close ONLY (No flickering on parent re-renders)
   useEffect(() => {
     if (isOpen) {
-      if (!streamRef.current && !isStartingCameraRef.current) {
+      if (!qrScannerRef.current && !isStartingCameraRef.current) {
         startCamera(facingMode);
       }
     } else {
