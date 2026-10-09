@@ -336,6 +336,7 @@ function CustomerPortalContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialTab = searchParams.get('tab');
+  const storeParam = searchParams.get('store') || searchParams.get('slug');
 
   // Active Bottom Tab: 'home' | 'rewards' | 'details' | 'profile' | 'explore'
   const [activeTab, setActiveTab] = useState<'home' | 'explore' | 'rewards' | 'details' | 'profile'>(() => {
@@ -485,6 +486,7 @@ function CustomerPortalContent() {
   });
 
   const [selectedPassSlug, setSelectedPassSlug] = useState<string>(() => {
+    if (storeParam) return storeParam;
     if (typeof window !== 'undefined') {
       try {
         return localStorage.getItem('reva_selected_pass_slug') || '';
@@ -493,16 +495,37 @@ function CustomerPortalContent() {
     return '';
   });
 
+  useEffect(() => {
+    if (storeParam) {
+      setSelectedPassSlug(storeParam);
+      try {
+        localStorage.setItem('reva_selected_pass_slug', storeParam);
+      } catch {}
+    }
+  }, [storeParam]);
+
   const passHolderRef = useRef<HTMLDivElement>(null);
 
   const selectedPass = useMemo(() => {
     if (userPasses.length === 0) return null;
+    if (selectedPassSlug) {
+      const matchBySlug = userPasses.find((p: any) => p.slug === selectedPassSlug);
+      if (matchBySlug) return matchBySlug;
+    }
     return (
       userPasses.find((p: any) => p.id && p.id === selectedPassId) ||
-      userPasses.find((p) => p.slug === selectedPassSlug) ||
       userPasses[0]
     );
   }, [userPasses, selectedPassId, selectedPassSlug]);
+
+  useEffect(() => {
+    if (selectedPass?.id && selectedPass.id !== selectedPassId) {
+      setSelectedPassId(selectedPass.id);
+      try {
+        localStorage.setItem('reva_selected_pass_id', selectedPass.id);
+      } catch {}
+    }
+  }, [selectedPass, selectedPassId]);
 
   const handleSelectPass = (idOrSlug: string) => {
     sound.playClick();
@@ -956,7 +979,7 @@ function CustomerPortalContent() {
                 if (sessionData.passes.length > 0) {
                   setSelectedPassSlug((prev) => {
                     const savedSelected = localStorage.getItem('reva_selected_pass_slug');
-                    const candidate = prev || savedSelected || '';
+                    const candidate = storeParam || prev || savedSelected || '';
                     const exists = sessionData.passes.some((p: any) => p.slug === candidate);
                     const chosen = exists && candidate ? candidate : sessionData.passes[0].slug;
                     try { localStorage.setItem('reva_selected_pass_slug', chosen); } catch {}
@@ -1295,6 +1318,18 @@ function CustomerPortalContent() {
     }
     fetchBusinesses();
   }, []);
+
+  // Auto-prompt join pass if user visited with a specific store parameter and does not have the pass yet
+  useEffect(() => {
+    if (!storeParam || loadingBusinesses || businesses.length === 0) return;
+    const hasPass = userPasses.some((p: any) => p.slug === storeParam);
+    if (!hasPass) {
+      const targetBiz = businesses.find((b: any) => b.slug === storeParam);
+      if (targetBiz && !joiningBusiness) {
+        setJoiningBusiness(targetBiz);
+      }
+    }
+  }, [storeParam, businesses, userPasses, loadingBusinesses, joiningBusiness]);
 
   // Categories for Explore Tab
   const categories = ['All', 'Café & Beverage', 'Bakery & Deli', 'Fashion & Boutique', 'Salon & Spa', 'Fragrance & Lifestyle'];

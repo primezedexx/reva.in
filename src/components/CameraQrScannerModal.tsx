@@ -214,13 +214,13 @@ export default function CameraQrScannerModal({
         setTimeout(() => {
           stopCameraStream();
           onClose();
-          router.push(`/c/${bizSlug}`);
+          router.push(`/c?store=${encodeURIComponent(bizSlug)}`);
         }, 450);
       } else {
         setTimeout(() => {
           stopCameraStream();
           onClose();
-          router.push(`/c/${scannedSlug}?scan=1`);
+          router.push(`/c?store=${encodeURIComponent(scannedSlug)}&scan=1`);
         }, 350);
       }
     } catch {
@@ -397,7 +397,7 @@ export default function CameraQrScannerModal({
             });
           }
           if (currentSlug !== targetSlug && (!currentSlug || !onStampClaimed)) {
-            router.push(`/c/${targetSlug}?scan=1`);
+            router.push(`/c?store=${encodeURIComponent(targetSlug)}&scan=1`);
           }
         }, 400);
       }
