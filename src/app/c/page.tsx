@@ -1232,6 +1232,8 @@ function CustomerPortalContent() {
   useEffect(() => {
     const derived: Array<{
       id: string;
+      passId?: string;
+      rewardId?: string;
       businessName: string;
       businessSlug: string;
       brandColor: string;
@@ -1242,14 +1244,33 @@ function CustomerPortalContent() {
       image?: string;
     }> = [];
 
+    // Map all active passes by slug and rewardId/title to ensure card stamp isolation
+    const startedPassMap = new Map<string, { stamps: number; totalNeeded: number }>();
+    userPasses.forEach((p) => {
+      const rewardKey = `${p.slug}_${(p.rewardId || 'primary')}`.toLowerCase();
+      startedPassMap.set(rewardKey, {
+        stamps: p.stamps || 0,
+        totalNeeded: p.totalStamps || p.reward_rule?.stamps_needed || 6,
+      });
+      if (p.rewardTitle) {
+        const titleKey = `${p.slug}_title_${p.rewardTitle.toLowerCase().trim()}`;
+        startedPassMap.set(titleKey, {
+          stamps: p.stamps || 0,
+          totalNeeded: p.totalStamps || p.reward_rule?.stamps_needed || 6,
+        });
+      }
+    });
+
     userPasses.forEach((pass) => {
       const needed = pass.totalStamps || pass.reward_rule?.stamps_needed || 6;
       const current = pass.stamps || 0;
 
-      // Full Card Loyalty Reward Unlocked ONLY when customer completes all required stamps (e.g. 6/6 or 8/8)
-      if (current >= needed) {
+      // Full Card Loyalty Reward Unlocked ONLY when THIS specific pass completes all required stamps
+      if (current >= needed && current > 0) {
         derived.push({
-          id: `reward_${pass.slug}_full_${needed}`,
+          id: `reward_${pass.slug}_${pass.id || pass.rewardId || 'primary'}_${needed}`,
+          passId: pass.id,
+          rewardId: pass.rewardId || 'primary',
           businessName: pass.name,
           businessSlug: pass.slug,
           brandColor: pass.brandColor || '#3B82F6',
@@ -1261,11 +1282,25 @@ function CustomerPortalContent() {
         });
       }
 
-      // Intermediate Milestone Rewards Unlocked
-      if (pass.active_offers && Array.isArray(pass.active_offers)) {
+      // Intermediate Milestone Rewards Unlocked (ONLY for primary pass, and NEVER for rewards that have dedicated passes)
+      const isPrimaryPass = !pass.rewardId || pass.rewardId === 'primary';
+      if (isPrimaryPass && pass.active_offers && Array.isArray(pass.active_offers)) {
         pass.active_offers.forEach((offer: any) => {
+          // If customer has an active independent card for this offer, that card is tracked on its own!
+          // It MUST NOT unlock via the primary card!
+          const offerKey = `${pass.slug}_${offer.id}`.toLowerCase();
+          const offerTitleKey = `${pass.slug}_title_${(offer.title || '').toLowerCase().trim()}`;
+          if (startedPassMap.has(offerKey) || startedPassMap.has(offerTitleKey)) {
+            return;
+          }
+
           const offNeeded = offer.stamps_needed || needed;
-          if (current >= offNeeded && offer.title !== (pass.rewardTitle || pass.reward_rule?.reward_title)) {
+          if (
+            offNeeded < needed &&
+            current >= offNeeded &&
+            current > 0 &&
+            offer.title !== (pass.rewardTitle || pass.reward_rule?.reward_title)
+          ) {
             let expText = 'Ready to claim at counter';
             if (offer.expiry_days) {
               if (pass.joined_at) {
@@ -1278,6 +1313,8 @@ function CustomerPortalContent() {
             }
             derived.push({
               id: `reward_${pass.slug}_milestone_${offer.id || offNeeded}`,
+              passId: pass.id,
+              rewardId: offer.id,
               businessName: pass.name,
               businessSlug: pass.slug,
               brandColor: pass.brandColor || '#3B82F6',
@@ -1865,6 +1902,8 @@ function CustomerPortalContent() {
   // Handle Reward Claim
   const handleClaimVoucher = async (reward: {
     id: string;
+    passId?: string;
+    rewardId?: string;
     businessName: string;
     businessSlug: string;
     brandColor?: string;
@@ -1873,12 +1912,26 @@ function CustomerPortalContent() {
     totalNeeded?: number;
     expiry?: string;
   }) => {
-    const targetPass = userPasses.find((p) => p.slug === reward.businessSlug);
+    const targetPass = reward.passId
+      ? userPasses.find((p) => p.id === reward.passId)
+      : userPasses.find(
+          (p) =>
+            p.slug === reward.businessSlug &&
+            p.rewardTitle?.toLowerCase().trim() === reward.rewardTitle?.toLowerCase().trim()
+        ) ||
+        userPasses.find(
+          (p) =>
+            p.slug === reward.businessSlug &&
+            reward.rewardId &&
+            p.rewardId === reward.rewardId
+        ) ||
+        userPasses.find((p) => p.slug === reward.businessSlug);
+
     const needed = reward.totalNeeded || targetPass?.totalStamps || 6;
     const current = targetPass?.stamps || 0;
 
     if (current < needed) {
-      alert(`You need ${needed} stamps to claim this reward (you currently have ${current}). Keep collecting stamps!`);
+      alert(`You need ${needed} stamps to claim this reward (you currently have ${current} on this card). Keep collecting stamps!`);
       return;
     }
 
@@ -1891,14 +1944,28 @@ function CustomerPortalContent() {
 
     const code = Math.floor(100000 + Math.random() * 900000).toString();
 
-    // 1. Keep the pass in userPasses and deduct needed stamps
+    // 1. Keep the pass in userPasses and deduct needed stamps ONLY on the target pass
     const passMembershipId = (targetPass as any)?.membershipId || (targetPass as any)?.membership_id || (targetPass as any)?.id || targetPass?.passId;
-    const targetBusId = (targetPass as any)?.business_id || reward.businessSlug;
+    const targetBusId = (targetPass as any)?.business_id || (targetPass as any)?.businessId || reward.businessSlug;
+    const targetPassId = reward.passId || targetPass?.id;
+    const targetRewardId = targetPass?.rewardId || reward.rewardId;
+
+    const isMatchPass = (p: any) => {
+      if (targetPassId && p.id === targetPassId) return true;
+      if (
+        p.slug === reward.businessSlug &&
+        p.rewardTitle?.toLowerCase().trim() === reward.rewardTitle?.toLowerCase().trim()
+      ) {
+        return true;
+      }
+      return false;
+    };
+
     const deduct = needed;
 
     setUserPasses((prev) => {
       const updated = prev.map((pass) => {
-        if (pass.slug === reward.businessSlug) {
+        if (isMatchPass(pass)) {
           return {
             ...pass,
             stamps: Math.max(0, (pass.stamps || 0) - deduct),
@@ -1970,6 +2037,7 @@ function CustomerPortalContent() {
             verifiedBy: 'customer_claim',
             voucherCode: code,
             status: 'PENDING',
+            rewardId: targetRewardId || undefined,
           }),
         });
         if (res.ok) {
@@ -1977,10 +2045,12 @@ function CustomerPortalContent() {
           if (data.membership) {
             setUserPasses((prev) => {
               const updated = prev.map((pass) => {
-                if (pass.slug === reward.businessSlug || (pass as any).membershipId === data.membership.id) {
+                if (isMatchPass(pass)) {
+                  // If it was the primary pass, sync with membership.stamps; if extra pass, keep deducted stamps
+                  const isPrimary = !pass.rewardId || pass.rewardId === 'primary';
                   return {
                     ...pass,
-                    stamps: data.membership.stamps !== undefined ? data.membership.stamps : 0,
+                    stamps: isPrimary && data.membership.stamps !== undefined ? data.membership.stamps : Math.max(0, (pass.stamps || 0)),
                     cycle: (pass.cycle || 1) + 1,
                   };
                 }

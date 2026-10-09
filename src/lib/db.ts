@@ -2031,24 +2031,93 @@ class RevaDatabase {
     rewardDesc: string,
     verifiedBy = 'counter_staff',
     voucherCode?: string,
-    status: 'PENDING' | 'REDEEMED' = 'PENDING'
+    status: 'PENDING' | 'REDEEMED' = 'PENDING',
+    rewardId?: string
   ): Promise<RewardClaimed> {
     const mem = await this.getMembershipById(membershipId);
     const bus = await this.getBusinessById(businessId);
     const actualMemId = mem?.id || membershipId;
     const actualBusId = bus?.id || businessId;
-    const stampsNeeded = bus?.reward_rule?.stamps_needed || 6;
-    const currentStamps = mem ? Number(mem.stamps) || 0 : 0;
 
-    // Check stamp requirement: only allow claim if customer actually completed their stamps
-    if (currentStamps < stampsNeeded) {
-      throw new Error(`Cannot claim reward. Requires ${stampsNeeded} stamps, but customer only has ${currentStamps} stamp${currentStamps === 1 ? '' : 's'}.`);
+    // Check if this is an additional reward pass (stored in tier JSON)
+    let tierData: any = {};
+    try {
+      tierData = JSON.parse(mem?.tier || '{}');
+    } catch {
+      tierData = {};
     }
 
-    const newStamps = Math.max(0, currentStamps - stampsNeeded);
+    const matchedOffer = (bus?.active_offers || []).find(
+      (o: any) => o.id === rewardId || o.title?.toLowerCase().trim() === rewardDesc.toLowerCase().trim()
+    );
+    const effectiveRewardId = rewardId && rewardId !== 'primary' ? rewardId : (matchedOffer && matchedOffer.title !== bus?.reward_rule?.reward_title ? matchedOffer.id : null);
+    const isAdditionalReward = Boolean(effectiveRewardId && tierData.passes && tierData.passes[effectiveRewardId]);
+
+    let stampsNeeded = bus?.reward_rule?.stamps_needed || 6;
+    let currentStamps = mem ? Number(mem.stamps) || 0 : 0;
+    let newStamps = currentStamps;
+
     const nowIso = new Date().toISOString();
     const finalCode = voucherCode || Math.floor(100000 + Math.random() * 900000).toString();
     const encodedVerifiedBy = `code:${finalCode}|status:${status}|by:${verifiedBy}`;
+
+    if (isAdditionalReward && effectiveRewardId) {
+      const extraPass = tierData.passes[effectiveRewardId];
+      currentStamps = Number(extraPass?.stamps) || 0;
+      stampsNeeded = Number(matchedOffer?.stamps_needed) || stampsNeeded;
+
+      if (currentStamps < stampsNeeded) {
+        throw new Error(`Cannot claim "${rewardDesc}". Requires ${stampsNeeded} stamps on this pass, but customer only has ${currentStamps} stamp${currentStamps === 1 ? '' : 's'}.`);
+      }
+
+      extraPass.stamps = Math.max(0, currentStamps - stampsNeeded);
+      extraPass.cycle = (extraPass.cycle || 1) + 1;
+      const updatedTierJson = JSON.stringify(tierData);
+
+      try {
+        await supabaseAdmin
+          .from('memberships')
+          .update({ tier: updatedTierJson })
+          .eq('id', actualMemId);
+      } catch (err) {
+        console.error('Error updating membership tier in Supabase:', err);
+      }
+
+      if (mem) {
+        mem.tier = updatedTierJson;
+      }
+    } else {
+      // Primary Loyalty Pass
+      stampsNeeded = bus?.reward_rule?.stamps_needed || 6;
+      currentStamps = mem ? Number(mem.stamps) || 0 : 0;
+
+      if (currentStamps < stampsNeeded) {
+        throw new Error(`Cannot claim reward. Requires ${stampsNeeded} stamps, but customer only has ${currentStamps} stamp${currentStamps === 1 ? '' : 's'}.`);
+      }
+
+      newStamps = Math.max(0, currentStamps - stampsNeeded);
+
+      try {
+        const { error: resetErr } = await supabaseAdmin
+          .from('memberships')
+          .update({ stamps: newStamps })
+          .eq('id', actualMemId);
+
+        if (resetErr) {
+          console.error('Error resetting membership stamps on claim in Supabase:', resetErr);
+        }
+      } catch (e) {
+        console.error('Supabase claimReward error:', e);
+      }
+
+      if (mem) {
+        mem.stamps = newStamps;
+        const memIdx = this.memberships.findIndex((m) => m.id === actualMemId);
+        if (memIdx !== -1) {
+          this.memberships[memIdx] = { ...this.memberships[memIdx], stamps: newStamps };
+        }
+      }
+    }
 
     let createdClaim: RewardClaimed | null = null;
     try {
@@ -2066,28 +2135,8 @@ class RevaDatabase {
       if (!error && data) {
         createdClaim = this.parseRewardClaim(data);
       }
-
-      // Deduct/Reset stamps in Supabase memberships table
-      const { error: resetErr } = await supabaseAdmin
-        .from('memberships')
-        .update({
-          stamps: newStamps,
-        })
-        .eq('id', actualMemId);
-
-      if (resetErr) {
-        console.error('Error resetting membership stamps on claim in Supabase:', resetErr);
-      }
     } catch (e) {
       console.error('Supabase claimReward error:', e);
-    }
-
-    if (mem) {
-      mem.stamps = newStamps;
-      const memIdx = this.memberships.findIndex((m) => m.id === actualMemId);
-      if (memIdx !== -1) {
-        this.memberships[memIdx] = { ...this.memberships[memIdx], stamps: newStamps };
-      }
     }
 
     const claim: RewardClaimed = createdClaim || {

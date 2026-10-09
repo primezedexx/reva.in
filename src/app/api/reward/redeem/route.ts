@@ -17,7 +17,7 @@ const NO_CACHE_HEADERS = {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { membershipId, businessId, rewardDesc, verifiedBy, voucherCode, status } = body;
+    const { membershipId, businessId, rewardDesc, verifiedBy, voucherCode, status, rewardId } = body;
 
     if (!membershipId || !businessId) {
       return NextResponse.json(
@@ -32,7 +32,8 @@ export async function POST(req: NextRequest) {
       rewardDesc || 'Loyalty Reward Claimed',
       verifiedBy || 'customer_claim',
       voucherCode,
-      status || 'PENDING'
+      status || 'PENDING',
+      rewardId
     );
 
     const updatedMem = await db.getMembershipById(membershipId);
