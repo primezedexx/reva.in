@@ -3990,24 +3990,26 @@ function OwnerDashboardContent() {
         {activeTab === 'stats' && (
           <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-200">
             {/* SUB-SECTION SELECTOR FOR STATS: Stamps Activity Log, CRM Directory, WhatsApp Offers */}
-            <div className="flex items-center gap-2 p-1.5 bg-slate-100 rounded-2xl w-full sm:w-auto overflow-x-auto no-scrollbar shadow-inner">
+            <div className="flex items-center gap-1.5 p-1.5 bg-slate-100 rounded-2xl overflow-x-auto no-scrollbar max-w-full border border-slate-200/60 shadow-xs">
               <button
                 type="button"
                 onClick={() => {
                   setStatsActiveSection('stamps');
                   sound.playClick();
                 }}
-                className={`flex-1 sm:flex-none px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all inline-flex items-center gap-2 cursor-pointer ${
                   statsActiveSection === 'stamps'
                     ? 'bg-[#0F172A] text-white shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/70'
                 }`}
               >
-                <Zap className="w-3.5 h-3.5 text-amber-400" />
-                <span>Stamp Audit Log</span>
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold ${
-                  statsActiveSection === 'stamps' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
-                }`}>
+                <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span className="whitespace-nowrap">Stamp Audit Log</span>
+                <span
+                  className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold shrink-0 ${
+                    statsActiveSection === 'stamps' ? 'bg-white/20 text-white' : 'bg-slate-200/90 text-slate-700'
+                  }`}
+                >
                   {metrics?.recentVisits?.length || 0}
                 </span>
               </button>
@@ -4018,17 +4020,19 @@ function OwnerDashboardContent() {
                   setStatsActiveSection('crm');
                   sound.playClick();
                 }}
-                className={`flex-1 sm:flex-none px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all inline-flex items-center gap-2 cursor-pointer ${
                   statsActiveSection === 'crm'
                     ? 'bg-[#0F172A] text-white shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/70'
                 }`}
               >
-                <Users className="w-3.5 h-3.5 text-blue-500" />
-                <span>Customer CRM</span>
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold ${
-                  statsActiveSection === 'crm' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
-                }`}>
+                <Users className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                <span className="whitespace-nowrap">Customer CRM</span>
+                <span
+                  className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold shrink-0 ${
+                    statsActiveSection === 'crm' ? 'bg-white/20 text-white' : 'bg-slate-200/90 text-slate-700'
+                  }`}
+                >
                   {metrics?.members?.length || 0}
                 </span>
               </button>
@@ -4039,17 +4043,19 @@ function OwnerDashboardContent() {
                   setStatsActiveSection('whatsapp');
                   sound.playClick();
                 }}
-                className={`flex-1 sm:flex-none px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                className={`shrink-0 whitespace-nowrap px-4 py-2 rounded-xl text-xs font-bold transition-all inline-flex items-center gap-2 cursor-pointer ${
                   statsActiveSection === 'whatsapp'
                     ? 'bg-[#0F172A] text-white shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/70'
                 }`}
               >
-                <MessageSquare className="w-3.5 h-3.5 text-emerald-500" />
-                <span>WhatsApp Offers</span>
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold ${
-                  statsActiveSection === 'whatsapp' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
-                }`}>
+                <MessageSquare className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                <span className="whitespace-nowrap">WhatsApp Offers</span>
+                <span
+                  className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold shrink-0 ${
+                    statsActiveSection === 'whatsapp' ? 'bg-white/20 text-white' : 'bg-slate-200/90 text-slate-700'
+                  }`}
+                >
                   {metrics?.recentLogs?.length || 0}
                 </span>
               </button>
