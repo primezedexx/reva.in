@@ -705,21 +705,23 @@ function CustomerPortalContent() {
     );
   }, [currentStore, userPasses]);
 
-  // Global Cross-Pass 24-Hour Cooldown Calculation (DO NOT CHANGE CALCULATION FORMULA)
-  const customerLatestQrStamp = useMemo(() => {
-    const fromPasses = userPasses.map((p) => (p.last_qr_stamp_at ? new Date(p.last_qr_stamp_at).getTime() : 0));
-    let fromStorage = 0;
+  // Store-Specific 24-Hour Cooldown Calculation (Only active for the store where self-serve QR was scanned)
+  const currentStoreQrStamp = useMemo(() => {
+    if (!selectedPass?.slug) return 0;
+    const storeSlug = selectedPass.slug;
+    const passTime = selectedPass.last_qr_stamp_at ? new Date(selectedPass.last_qr_stamp_at).getTime() : 0;
+    let storageTime = 0;
     if (typeof window !== 'undefined') {
       try {
-        fromStorage = Number(localStorage.getItem('reva_last_qr_stamp_ts') || 0);
+        storageTime = Number(localStorage.getItem(`reva_last_qr_stamp_ts_${storeSlug}`) || 0);
       } catch {}
     }
-    return Math.max(0, ...fromPasses, fromStorage);
-  }, [userPasses]);
+    return Math.max(passTime, storageTime);
+  }, [selectedPass]);
 
   const COOLDOWN_MS = 24 * 60 * 60 * 1000;
-  const timeSinceLastQr = Date.now() - customerLatestQrStamp;
-  const isGlobalCooldownActive = customerLatestQrStamp > 0 && timeSinceLastQr < COOLDOWN_MS;
+  const timeSinceLastQr = currentStoreQrStamp > 0 ? Date.now() - currentStoreQrStamp : Infinity;
+  const isGlobalCooldownActive = currentStoreQrStamp > 0 && timeSinceLastQr < COOLDOWN_MS;
   const remainingCooldownMs = isGlobalCooldownActive ? COOLDOWN_MS - timeSinceLastQr : 0;
   const remainingCooldownHours = Math.max(0, Math.floor(remainingCooldownMs / (1000 * 60 * 60)));
   const remainingCooldownMins = Math.max(1, Math.floor((remainingCooldownMs % (1000 * 60 * 60)) / (1000 * 60)));
@@ -761,7 +763,7 @@ function CustomerPortalContent() {
       theme_config: currentStore.theme_config || selectedPass?.theme_config,
       reward_rule: currentStore.reward_rule || selectedPass?.reward_rule,
       active_offers: currentStore.active_offers || selectedPass?.active_offers || [],
-      last_qr_stamp_at: customerLatestQrStamp > 0 ? new Date(customerLatestQrStamp).toISOString() : undefined,
+      last_qr_stamp_at: currentStoreQrStamp > 0 ? new Date(currentStoreQrStamp).toISOString() : undefined,
     };
 
     const updatedPasses = [...userPasses, newPass as any];
@@ -2481,17 +2483,7 @@ function CustomerPortalContent() {
                     <button
                       onClick={() => {
                         sound.playClick();
-                        if (isGlobalCooldownActive) {
-                          setCooldownModal({
-                            isOpen: true,
-                            hoursRemaining: remainingCooldownHours,
-                            minutesRemaining: remainingCooldownMins,
-                            businessName: (currentStore as any)?.name || 'Partner Store',
-                            businessColor: '#0F172A',
-                          });
-                        } else {
-                          setShowScannerModal(true);
-                        }
+                        setShowScannerModal(true);
                       }}
                       className="w-full sm:w-auto px-6 py-3 rounded-full bg-[#0F172A] hover:bg-black dark:bg-white dark:hover:bg-slate-100 text-white dark:text-black font-display font-bold text-xs shadow-md transition-all cursor-pointer inline-flex items-center justify-center gap-2 group active:scale-98"
                     >
@@ -2513,17 +2505,7 @@ function CustomerPortalContent() {
                 <button
                   onClick={() => {
                     sound.playClick();
-                    if (isGlobalCooldownActive) {
-                      setCooldownModal({
-                        isOpen: true,
-                        hoursRemaining: remainingCooldownHours,
-                        minutesRemaining: remainingCooldownMins,
-                        businessName: selectedPass?.name || currentStore?.name,
-                        businessColor: selectedPass?.brandColor || '#0F172A',
-                      });
-                    } else {
-                      setShowScannerModal(true);
-                    }
+                    setShowScannerModal(true);
                   }}
                   className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer flex items-center gap-1"
                 >
@@ -3978,6 +3960,9 @@ function CustomerPortalContent() {
         rewardId={selectedPass?.rewardId}
         customerPhone={customerPhone}
         customerName={customerName}
+        isCooldownActive={isGlobalCooldownActive}
+        cooldownHours={remainingCooldownHours}
+        cooldownMins={remainingCooldownMins}
         onStampClaimed={(res) => {
           if (res.success) {
             sound.playRewardFanfare();
@@ -3989,6 +3974,9 @@ function CustomerPortalContent() {
             const nowIso = new Date().toISOString();
             try {
               localStorage.setItem('reva_last_qr_stamp_ts', String(Date.now()));
+              if (res.business?.slug) {
+                localStorage.setItem(`reva_last_qr_stamp_ts_${res.business.slug}`, String(Date.now()));
+              }
             } catch {}
 
             // Reactive immediate in-place update of userPasses: update stamps for only this pass, and update last_qr_stamp_at across ALL passes

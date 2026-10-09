@@ -126,6 +126,7 @@ import BusinessSetupModal from '@/components/BusinessSetupModal';
 import SettingsSection from '@/components/SettingsSection';
 import PrivacySecurityModal from '@/components/PrivacySecurityModal';
 import CounterQrStandModal from '@/components/CounterQrStandModal';
+import CropLogoModal from '@/components/CropLogoModal';
 import { getPublicOrigin } from '@/lib/public-url';
 import {
   getPlanUpgradeDetails,
@@ -187,6 +188,9 @@ function OwnerDashboardContent() {
   const [settingsLogoUrl, setSettingsLogoUrl] = useState('');
   const [isUploadingStoreImage, setIsUploadingStoreImage] = useState(false);
   const [storeImageSavedToast, setStoreImageSavedToast] = useState(false);
+  const [showCropPhotoModal, setShowCropPhotoModal] = useState(false);
+  const [cropImageRawSrc, setCropImageRawSrc] = useState('');
+  const [isSavingCrop, setIsSavingCrop] = useState(false);
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
   const [showProfilePrivacyModal, setShowProfilePrivacyModal] = useState(false);
   const [showPhoneVerifyModal, setShowPhoneVerifyModal] = useState(false);
@@ -1093,7 +1097,7 @@ function OwnerDashboardContent() {
   }
 
   // 3.5 Storefront Image & Profile Picture Handlers
-  function handleImageFileSelect(e: React.ChangeEvent<HTMLInputElement>, isModal = false) {
+  function handleImageFileSelect(e: React.ChangeEvent<HTMLInputElement>, _isModal = false) {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -1104,42 +1108,51 @@ function OwnerDashboardContent() {
 
     const reader = new FileReader();
     reader.onload = (event) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const MAX_SIZE = 600;
-        let width = img.width;
-        let height = img.height;
-
-        if (width > height) {
-          if (width > MAX_SIZE) {
-            height = Math.round((height * MAX_SIZE) / width);
-            width = MAX_SIZE;
-          }
-        } else {
-          if (height > MAX_SIZE) {
-            width = Math.round((width * MAX_SIZE) / height);
-            height = MAX_SIZE;
-          }
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
-          const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
-          if (isModal) {
-            setCustomLogoUrl(dataUrl);
-          } else {
-            setSettingsLogoUrl(dataUrl);
-          }
-          sound.playStampPop();
-        }
-      };
-      img.src = event.target?.result as string;
+      const rawSrc = event.target?.result as string;
+      if (rawSrc) {
+        setCropImageRawSrc(rawSrc);
+        setShowCropPhotoModal(true);
+        sound.playStampPop();
+      }
     };
     reader.readAsDataURL(file);
+    e.target.value = '';
+  }
+
+  // Handle Apply and Save Cropped Logo directly to Database
+  async function handleApplyAndSaveCrop(croppedDataUrl: string) {
+    if (!selectedBusiness) return;
+    setIsSavingCrop(true);
+    try {
+      sound.playStampPop();
+      const targetSlugOrId = selectedBusiness.slug || selectedBusiness.id;
+      const res = await fetch(`/api/businesses/${targetSlugOrId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          logo_url: croppedDataUrl,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        sound.playRewardFanfare();
+        confetti({ particleCount: 75, spread: 65, origin: { y: 0.6 } });
+        setSettingsLogoUrl(croppedDataUrl);
+        setCustomLogoUrl(croppedDataUrl);
+        setSelectedBusiness((prev) => (prev ? { ...prev, logo_url: croppedDataUrl } : null));
+        setStoreImageSavedToast(true);
+        setTimeout(() => setStoreImageSavedToast(false), 3500);
+        setShowCropPhotoModal(false);
+        setCropImageRawSrc('');
+        await loadDashboardData(selectedBusiness.id);
+      } else {
+        alert(data.error || 'Failed to save cafe logo');
+      }
+    } catch {
+      alert('Network error saving cafe logo');
+    } finally {
+      setIsSavingCrop(false);
+    }
   }
 
   // 1-Click Save Storefront Image
@@ -6626,6 +6639,20 @@ function OwnerDashboardContent() {
           onClose={() => setIsQrStandModalOpen(false)}
           business={selectedBusiness}
           origin={origin}
+        />
+
+        {/* ========================================================================= */}
+        {/* CAFE LOGO CROP & POSITION MODAL                                           */}
+        {/* ========================================================================= */}
+        <CropLogoModal
+          isOpen={showCropPhotoModal}
+          imageSrc={cropImageRawSrc}
+          onClose={() => {
+            setShowCropPhotoModal(false);
+            setCropImageRawSrc('');
+          }}
+          onSave={handleApplyAndSaveCrop}
+          isSaving={isSavingCrop}
         />
       </main>
 

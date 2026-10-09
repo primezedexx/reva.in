@@ -1,9 +1,9 @@
 'use client';
 
 // ============================================================================
-// REVA (reva.in) — UPI-Grade Instant Camera QR Code Scanner (<100ms)
+// SIPLO (siplo.in) — UPI-Grade Instant Camera QR Code Scanner (<100ms)
 // Hardware BarcodeDetector (Singleton) + 60fps Center-Crop jsQR Engine
-// Instant Haptic + 24-Hour Cooldown Seamless Modal Handoff
+// Zero-Flicker Instant Stream + In-Viewfinder 24-Hour Cooldown Indicator
 // ============================================================================
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -31,6 +31,9 @@ interface CameraQrScannerModalProps {
   customerPhone?: string;
   customerName?: string;
   rewardId?: string;
+  isCooldownActive?: boolean;
+  cooldownHours?: number;
+  cooldownMins?: number;
   onStampClaimed?: (result: {
     success: boolean;
     cooldownActive?: boolean;
@@ -52,14 +55,40 @@ export default function CameraQrScannerModal({
   customerPhone,
   customerName,
   rewardId,
+  isCooldownActive,
+  cooldownHours = 24,
+  cooldownMins = 0,
   onStampClaimed,
 }: CameraQrScannerModalProps) {
   const router = useRouter();
+
+  // Stable props ref to avoid useEffect dependency recreation & stream flickering
+  const propsRef = useRef({
+    currentSlug,
+    customerPhone,
+    customerName,
+    rewardId,
+    onStampClaimed,
+    onClose,
+    router,
+  });
+  useEffect(() => {
+    propsRef.current = {
+      currentSlug,
+      customerPhone,
+      customerName,
+      rewardId,
+      onStampClaimed,
+      onClose,
+      router,
+    };
+  });
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationFrameId = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const isStartingCameraRef = useRef<boolean>(false);
 
   // Singleton hardware BarcodeDetector reference
   const barcodeDetectorRef = useRef<any>(null);
@@ -112,6 +141,7 @@ export default function CameraQrScannerModal({
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
+    isStartingCameraRef.current = false;
     setIsTorchOn(false);
   }, []);
 
@@ -119,10 +149,16 @@ export default function CameraQrScannerModal({
   const parseStoreFromQr = (rawText: string): string | null => {
     const trimmed = rawText.trim();
 
-    // Pattern 1: URL path like https://reva.in/c/boba-brew or http://localhost:3000/c/tokyo-matcha
+    // Pattern 1: URL path like https://reva.in/c/boba-brew or https://revain-delta.vercel.app/c/boba-brew
     const urlMatch = trimmed.match(/\/c\/([a-zA-Z0-9_-]+)/);
     if (urlMatch && urlMatch[1]) {
       return urlMatch[1].toLowerCase();
+    }
+
+    // Pattern 1b: URL with ?store= slug
+    const storeParamMatch = trimmed.match(/[?&]store=([a-zA-Z0-9_-]+)/);
+    if (storeParamMatch && storeParamMatch[1]) {
+      return storeParamMatch[1].toLowerCase();
     }
 
     // Pattern 2: JSON payload like {"slug":"boba-brew"} or {"businessId":"..."}
@@ -135,7 +171,7 @@ export default function CameraQrScannerModal({
       }
     } catch {}
 
-    // Pattern 3: Direct slug name (e.g. boba-brew, tokyo-matcha, down-town-bake-house-cafe)
+    // Pattern 3: Direct slug name (e.g. boba-brew, tokyo-matcha, bheem-pujaris-cafe)
     if (/^[a-zA-Z0-9_-]{3,60}$/.test(trimmed)) {
       return trimmed.toLowerCase();
     }
@@ -152,8 +188,9 @@ export default function CameraQrScannerModal({
     isProcessingRef.current = true;
 
     try {
+      const p = propsRef.current;
       const effectivePhone =
-        customerPhone ||
+        p.customerPhone ||
         localStorage.getItem('reva_customer_phone') ||
         localStorage.getItem(`reva_phone_${scannedSlug}`) ||
         '';
@@ -165,7 +202,7 @@ export default function CameraQrScannerModal({
           body: JSON.stringify({
             slug: scannedSlug,
             phone: effectivePhone,
-            name: customerName || undefined,
+            name: p.customerName || undefined,
             source: 'qr_scan',
             stampAwarded: 1,
             staffNote: 'Camera Viewfinder QR Scan (Switched Store)',
@@ -179,9 +216,9 @@ export default function CameraQrScannerModal({
 
         if (isCooldown) {
           stopCameraStream();
-          onClose();
-          if (onStampClaimed) {
-            onStampClaimed({
+          p.onClose();
+          if (p.onStampClaimed) {
+            p.onStampClaimed({
               success: false,
               cooldownActive: true,
               hoursRemaining: stampData.hoursRemaining ?? 23,
@@ -201,8 +238,8 @@ export default function CameraQrScannerModal({
           logo_url: stampData.membership?.business?.logo_url || stampData.business?.logo_url || scannedLogo,
         });
 
-        if (onStampClaimed) {
-          onStampClaimed({
+        if (p.onStampClaimed) {
+          p.onStampClaimed({
             success: Boolean(stampData.success),
             cooldownActive: false,
             message: stampData.message,
@@ -213,14 +250,14 @@ export default function CameraQrScannerModal({
 
         setTimeout(() => {
           stopCameraStream();
-          onClose();
-          router.push(`/c?store=${encodeURIComponent(bizSlug)}`);
+          p.onClose();
+          p.router.push(`/c?store=${encodeURIComponent(bizSlug)}`);
         }, 450);
       } else {
         setTimeout(() => {
           stopCameraStream();
-          onClose();
-          router.push(`/c?store=${encodeURIComponent(scannedSlug)}&scan=1`);
+          p.onClose();
+          p.router.push(`/c?store=${encodeURIComponent(scannedSlug)}&scan=1`);
         }, 350);
       }
     } catch {
@@ -242,18 +279,15 @@ export default function CameraQrScannerModal({
 
   // Handle successful QR detection with atomic synchronous lock & instant feedback
   const handleDecodedQr = useCallback(async (rawText: string) => {
-    // ATOMIC LOCK: Synchronously reject any subsequent frame detections
     if (isProcessingRef.current) return;
     isProcessingRef.current = true;
     setIsProcessing(true);
 
-    // Stop scanning loop immediately
     if (animationFrameId.current) {
       cancelAnimationFrame(animationFrameId.current);
       animationFrameId.current = null;
     }
 
-    // Instant UPI-Grade Haptic Vibration Feedback
     try {
       if (typeof navigator !== 'undefined' && navigator.vibrate) {
         navigator.vibrate([40, 30, 40]);
@@ -261,65 +295,66 @@ export default function CameraQrScannerModal({
     } catch {}
 
     const targetSlug = parseStoreFromQr(rawText);
+    const p = propsRef.current;
 
     if (!targetSlug) {
-      setErrorMessage(`Unrecognized QR code (${rawText.slice(0, 30)}...). Please point at a Siplo QR stand.`);
+      setErrorMessage('Unrecognized QR Code. Please point at the store stand QR.');
+      sound.playClick();
       setTimeout(() => {
         isProcessingRef.current = false;
         setIsProcessing(false);
+        setErrorMessage(null);
         startScanLoop();
-      }, 1500);
+      }, 1800);
       return;
     }
 
-    // CHECK: Is the scanned QR code for a DIFFERENT café than current active pass?
-    const isDifferentStore = Boolean(
-      currentSlug && currentSlug.trim().toLowerCase() !== targetSlug.trim().toLowerCase()
-    );
-
-    if (isDifferentStore) {
+    // Branch A: Different store detected
+    if (p.currentSlug && targetSlug !== p.currentSlug) {
       try {
-        const res = await fetch(`/api/businesses/${targetSlug}`, { cache: 'no-store' });
-        const data = await res.json();
-        const biz = data.business;
+        const bizRes = await fetch(`/api/businesses/${targetSlug}`);
+        const bizData = await bizRes.json();
+        const bizName = bizData.business?.name || targetSlug.replace(/-/g, ' ').toUpperCase();
+        const bizLogo = bizData.business?.logo_url;
+
         setDifferentStoreModal({
           scannedSlug: targetSlug,
-          scannedName: biz?.name || targetSlug,
-          scannedLogo: biz?.logo_url,
-          currentSlug: currentSlug || '',
+          scannedName: bizName,
+          scannedLogo: bizLogo,
+          currentSlug: p.currentSlug,
         });
+        sound.playStampPop();
         return;
       } catch {
         setDifferentStoreModal({
           scannedSlug: targetSlug,
-          scannedName: targetSlug,
-          currentSlug: currentSlug || '',
+          scannedName: targetSlug.replace(/-/g, ' ').toUpperCase(),
+          currentSlug: p.currentSlug,
         });
         return;
       }
     }
 
+    // Branch B: Same store scan
     try {
-      // 1. Resolve effective customer phone from session or store cache
       const effectivePhone =
-        customerPhone ||
+        p.customerPhone ||
         localStorage.getItem('reva_customer_phone') ||
         localStorage.getItem(`reva_phone_${targetSlug}`) ||
         '';
 
       if (effectivePhone && effectivePhone.replace(/\D/g, '').length >= 10 && !effectivePhone.includes('@')) {
-        // SINGLE FAST API CALL TO /api/stamp DIRECTLY (<150ms)
         const stampRes = await fetch('/api/stamp', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             slug: targetSlug,
             phone: effectivePhone,
-            name: customerName || undefined,
+            name: p.customerName || undefined,
             source: 'qr_scan',
             stampAwarded: 1,
             staffNote: 'Camera Viewfinder QR Scan',
-            rewardId: rewardId || undefined,
+            rewardId: p.rewardId || undefined,
           }),
         });
 
@@ -329,11 +364,10 @@ export default function CameraQrScannerModal({
         const bizSlug = stampData.membership?.business?.slug || stampData.business?.slug || targetSlug;
 
         if (isCooldown) {
-          // Immediately close camera and hand off directly to Cooldown Modal (No lag / no conflict)
           stopCameraStream();
-          onClose();
-          if (onStampClaimed) {
-            onStampClaimed({
+          p.onClose();
+          if (p.onStampClaimed) {
+            p.onStampClaimed({
               success: false,
               cooldownActive: true,
               hoursRemaining: stampData.hoursRemaining ?? 23,
@@ -346,7 +380,6 @@ export default function CameraQrScannerModal({
           return;
         }
 
-        // SUCCESS: Show instant recognized card animation
         sound.playStampPop();
         setRecognizedStore({
           name: bizName,
@@ -354,50 +387,51 @@ export default function CameraQrScannerModal({
           logo_url: stampData.membership?.business?.logo_url || stampData.business?.logo_url,
         });
 
-        // Pass result to parent callback immediately for in-place reactive UI update
-        if (onStampClaimed) {
-          onStampClaimed({
+        if (p.onStampClaimed) {
+          p.onStampClaimed({
             success: Boolean(stampData.success),
             cooldownActive: false,
             hoursRemaining: stampData.hoursRemaining,
             minutesRemaining: stampData.minutesRemaining,
             message: stampData.message || stampData.error,
             membership: stampData.membership,
-            rewardId: stampData.rewardId,
+            rewardId: p.rewardId,
             passStamps: stampData.passStamps,
             business: { name: bizName, slug: bizSlug, id: stampData.membership?.business_id || stampData.business?.id },
           });
         }
 
-        // Close scanner quickly with smooth handoff
         setTimeout(() => {
           stopCameraStream();
-          onClose();
-        }, 450);
+          p.onClose();
+        }, 550);
       } else {
-        // First-time guest without phone: fetch store name and smoothly navigate to join pass
-        const res = await fetch(`/api/businesses/${targetSlug}`, { cache: 'no-store' });
-        const data = await res.json();
-        const biz = data.business;
-        if (biz) {
-          setRecognizedStore({
-            name: biz.name,
-            slug: biz.slug,
-            logo_url: biz.logo_url,
-          });
-        }
+        let biz = null;
+        try {
+          const res = await fetch(`/api/businesses/${targetSlug}`);
+          const data = await res.json();
+          if (data.business) biz = data.business;
+        } catch {}
+
+        setRecognizedStore({
+          name: biz?.name || targetSlug.replace(/-/g, ' ').toUpperCase(),
+          slug: targetSlug,
+          logo_url: biz?.logo_url,
+        });
+        sound.playStampPop();
+
         setTimeout(() => {
           stopCameraStream();
-          onClose();
-          if (onStampClaimed) {
-            onStampClaimed({
+          p.onClose();
+          if (p.onStampClaimed) {
+            p.onStampClaimed({
               success: false,
               guestRedirect: true,
               business: biz ? { name: biz.name, slug: biz.slug, id: biz.id } : { name: targetSlug, slug: targetSlug },
             });
           }
-          if (currentSlug !== targetSlug && (!currentSlug || !onStampClaimed)) {
-            router.push(`/c?store=${encodeURIComponent(targetSlug)}&scan=1`);
+          if (p.currentSlug !== targetSlug && (!p.currentSlug || !p.onStampClaimed)) {
+            p.router.push(`/c?store=${encodeURIComponent(targetSlug)}&scan=1`);
           }
         }, 400);
       }
@@ -410,43 +444,37 @@ export default function CameraQrScannerModal({
         startScanLoop();
       }, 1200);
     }
-  }, [customerPhone, customerName, currentSlug, onStampClaimed, onClose, router, stopCameraStream]);
+  }, [stopCameraStream]);
 
-  // High-performance 60 FPS hardware BarcodeDetector + Center-Crop jsQR scan frame loop
+  // Frame scanner loop
   const executeFrameScan = useCallback(async () => {
     if (isProcessingRef.current || !videoRef.current) return;
     const video = videoRef.current;
-
-    // Ensure video has received video frames and is ready
-    if (video.readyState < video.HAVE_CURRENT_DATA || video.videoWidth === 0 || video.videoHeight === 0) {
+    if (video.readyState < 2 || video.videoWidth === 0 || video.videoHeight === 0) {
       animationFrameId.current = requestAnimationFrame(executeFrameScan);
       return;
     }
 
     scanFrameCountRef.current++;
 
-    // 1. Hardware accelerated Native BarcodeDetector (Chrome/Android/Edge) — Ultra fast (<5ms)
+    // 1. Native hardware BarcodeDetector (<1ms)
     if (barcodeDetectorRef.current) {
       try {
         const barcodes = await barcodeDetectorRef.current.detect(video);
-        if (barcodes && barcodes.length > 0 && barcodes[0]?.rawValue) {
+        if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
           handleDecodedQr(barcodes[0].rawValue);
           return;
         }
-      } catch {
-        // Fall back to optimized jsQR
-      }
+      } catch {}
     }
 
-    // 2. High-Performance Center-Viewfinder jsQR Engine (<3ms per frame)
+    // 2. Center-crop jsQR engine
     if (canvasRef.current) {
       const canvas = canvasRef.current;
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
       if (ctx) {
         const vw = video.videoWidth;
         const vh = video.videoHeight;
-
-        // UPI-Style Viewfinder Center Crop (Processes 4x fewer pixels for lightning speed)
         const cropSize = Math.floor(Math.min(vw, vh) * 0.75);
         const sx = Math.floor((vw - cropSize) / 2);
         const sy = Math.floor((vh - cropSize) / 2);
@@ -468,7 +496,7 @@ export default function CameraQrScannerModal({
           return;
         }
 
-        // Every 4th frame, also test full-frame scaled down to catch off-center scans
+        // Full frame fallback on every 4th frame
         if (scanFrameCountRef.current % 4 === 0) {
           const maxDim = 400;
           const scale = Math.min(1, maxDim / Math.max(vw, vh));
@@ -496,7 +524,6 @@ export default function CameraQrScannerModal({
     }
   }, [handleDecodedQr]);
 
-  // Ultra-fast 60 FPS requestAnimationFrame scheduler
   const startScanLoop = useCallback(() => {
     if (animationFrameId.current) {
       cancelAnimationFrame(animationFrameId.current);
@@ -504,17 +531,20 @@ export default function CameraQrScannerModal({
     animationFrameId.current = requestAnimationFrame(executeFrameScan);
   }, [executeFrameScan]);
 
-  // Robust Camera Stream Initiator with High-DPI Focus Constraints
+  // Robust Camera Stream Initiator (Instant, Zero-Flicker)
   const startCamera = useCallback(async (mode: 'environment' | 'user') => {
+    if (isStartingCameraRef.current) return;
+    isStartingCameraRef.current = true;
     const currentGen = ++streamGenRef.current;
+
     stopCameraStream();
     setErrorMessage(null);
     setIsProcessing(false);
     isProcessingRef.current = false;
     setRecognizedStore(null);
-    setCameraState('prompt');
 
     if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+      isStartingCameraRef.current = false;
       setCameraState('unsupported');
       setErrorMessage('Camera access is not supported by this browser.');
       return;
@@ -522,51 +552,39 @@ export default function CameraQrScannerModal({
 
     let stream: MediaStream | null = null;
 
-    // Constraint Strategy 1: High-DPI Crisp Video Stream with 30-60 FPS (UPI Scanner Speed)
     try {
+      // Instant Mobile-Optimized Constraint (avoid rigid min resolution bounds that cause delay/fallback)
       stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: { ideal: mode },
-          width: { ideal: 1280, min: 640 },
-          height: { ideal: 720, min: 480 },
-          frameRate: { ideal: 30, max: 60 },
+          facingMode: mode === 'user' ? 'user' : { ideal: 'environment' },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
         },
         audio: false,
       });
     } catch {
-      // Constraint Strategy 2: Fast Low-Latency Fallback
       try {
         stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: { ideal: mode },
-            width: { ideal: 640, min: 320 },
-            height: { ideal: 480, min: 240 },
-          },
+          video: true,
           audio: false,
         });
-      } catch {
-        // Constraint Strategy 3: Universal fallback
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: true,
-            audio: false,
-          });
-        } catch (err) {
-          if (currentGen !== streamGenRef.current) return;
-          console.warn('Camera getUserMedia failed on all constraints:', err);
-          setCameraState('denied');
-          if (err instanceof DOMException && err.name === 'NotAllowedError') {
-            setErrorMessage('Camera access was blocked. Please enable camera permissions in your browser.');
-          } else {
-            setErrorMessage('Could not open camera stream. Please check camera permissions.');
-          }
-          return;
+      } catch (err) {
+        isStartingCameraRef.current = false;
+        if (currentGen !== streamGenRef.current) return;
+        console.warn('Camera getUserMedia failed:', err);
+        setCameraState('denied');
+        if (err instanceof DOMException && err.name === 'NotAllowedError') {
+          setErrorMessage('Camera access was blocked. Please enable camera permissions in your browser.');
+        } else {
+          setErrorMessage('Could not open camera stream. Please check camera permissions.');
         }
+        return;
       }
     }
 
     if (currentGen !== streamGenRef.current) {
       stream?.getTracks().forEach((t) => t.stop());
+      isStartingCameraRef.current = false;
       return;
     }
 
@@ -583,12 +601,11 @@ export default function CameraQrScannerModal({
       }
     }
 
-    // Check torch / flashlight capability & continuous autofocus
+    // Check torch capability
     try {
       const track = stream.getVideoTracks()[0];
       const capabilities = track.getCapabilities?.() as any;
       setHasTorch(Boolean(capabilities?.torch));
-
       if (capabilities?.focusMode?.includes('continuous')) {
         await track.applyConstraints({ advanced: [{ focusMode: 'continuous' } as any] });
       }
@@ -597,6 +614,7 @@ export default function CameraQrScannerModal({
     }
 
     setCameraState('active');
+    isStartingCameraRef.current = false;
     startScanLoop();
   }, [stopCameraStream, startScanLoop]);
 
@@ -622,27 +640,30 @@ export default function CameraQrScannerModal({
     startCamera(nextMode);
   };
 
-  // Lifecycle on modal Open/Close
+  // Lifecycle on modal Open/Close ONLY (No flickering on parent re-renders)
   useEffect(() => {
     if (isOpen) {
-      startCamera(facingMode);
+      if (!streamRef.current && !isStartingCameraRef.current) {
+        startCamera(facingMode);
+      }
     } else {
       stopCameraStream();
+      setCameraState('prompt');
     }
     return () => {
       stopCameraStream();
     };
-  }, [isOpen, startCamera, stopCameraStream]);
+  }, [isOpen]); // Only re-run when modal opens or closes!
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-150">
       {/* Hidden processing canvas for jsQR fallback */}
       <canvas ref={canvasRef} className="hidden" />
 
       {/* Crisp White Card Modal */}
-      <div className="bg-white text-slate-900 rounded-[32px] max-w-sm w-full p-6 space-y-4 border border-slate-100 shadow-2xl relative overflow-hidden text-center">
+      <div className="bg-white text-slate-900 rounded-[32px] max-w-sm w-full p-5 sm:p-6 space-y-3.5 border border-slate-100 shadow-2xl relative overflow-hidden text-center">
         {/* Clean Close Button */}
         <button
           onClick={() => {
@@ -657,44 +678,38 @@ export default function CameraQrScannerModal({
         </button>
 
         {/* Clean Header */}
-        <div className="space-y-1 pt-1">
-          <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-mono font-bold uppercase tracking-widest">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
-            <Zap className="w-3 h-3 fill-current text-emerald-600" />
-            <span>INSTANT SCANNER</span>
+        <div className="space-y-0.5 pt-1">
+          <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-slate-100 text-slate-800 text-[10px] font-mono font-bold uppercase tracking-wider">
+            <Camera className="w-3 h-3 text-emerald-600" />
+            <span>Counter Stand Scanner</span>
           </div>
-          <h3 className="font-display font-bold text-xl text-[#0F172A] tracking-tight">
-            Scan Counter QR
+          <h3 className="font-display font-bold text-lg text-[#0F172A]">
+            Scan to Claim Stamp
           </h3>
-          <p className="text-xs text-slate-500">
-            Point your camera at the Siplo QR stand on the counter
+          <p className="text-xs text-slate-500 leading-tight">
+            Point your camera directly at the QR stand on the counter
           </p>
         </div>
 
-        {/* Clean Camera Viewfinder Frame */}
+        {/* Interactive Viewfinder Camera Screen */}
         <div className="relative w-full aspect-square rounded-2xl bg-slate-950 overflow-hidden border border-slate-200 shadow-inner flex items-center justify-center">
-          {/* 1. Permanent Video Element */}
+          {/* 1. Permanent Video Element (Instant stream) */}
           <video
             ref={videoRef}
             autoPlay
             playsInline
             muted
-            onLoadedMetadata={(e) => {
-              (e.target as HTMLVideoElement).play().catch(() => {});
-            }}
-            className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${
-              cameraState === 'active' ? 'opacity-100' : 'opacity-0 pointer-events-none'
-            }`}
+            className="absolute inset-0 w-full h-full object-cover"
           />
 
-          {/* 2. Camera Access Opening State */}
+          {/* 2. Fast Camera Initializing State */}
           {cameraState === 'prompt' && (
-            <div className="p-6 text-center space-y-3 z-10 text-white">
+            <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-xs flex flex-col items-center justify-center p-6 text-center space-y-3 z-10 text-white">
               <div className="w-12 h-12 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center mx-auto text-emerald-400">
                 <Camera className="w-6 h-6 animate-pulse" />
               </div>
               <div className="text-xs text-slate-300 font-medium">
-                Starting high-speed camera...
+                Opening camera...
               </div>
             </div>
           )}
@@ -822,6 +837,29 @@ export default function CameraQrScannerModal({
           )}
         </div>
 
+        {/* Viewfinder Bottom Status: Cooldown Countdown or Scan Prompt */}
+        {isCooldownActive ? (
+          <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs text-left flex items-start gap-2.5 shadow-2xs animate-in fade-in">
+            <Clock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <div className="space-y-0.5">
+              <div className="font-bold flex items-center gap-1.5 text-amber-950">
+                <span>24h Scan Cooldown Active</span>
+                <span className="text-[10px] bg-amber-200/90 text-amber-950 px-2 py-0.5 rounded-full font-mono font-bold">
+                  {cooldownHours}h {cooldownMins}m left
+                </span>
+              </div>
+              <p className="text-[11px] text-amber-800 leading-tight">
+                Self-serve camera scan is limited to 1 per 24 hours. Revisiting today? Ask the cashier to punch your stamp at checkout!
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="p-2.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs text-center flex items-center justify-center gap-1.5 font-medium shadow-2xs">
+            <Zap className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Ready to scan • Point camera at counter QR stand</span>
+          </div>
+        )}
+
         {/* Error Notification */}
         {errorMessage && (
           <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs text-left flex items-start gap-2 animate-in fade-in">
@@ -831,9 +869,9 @@ export default function CameraQrScannerModal({
         )}
 
         {/* Clean Footer Note */}
-        <div className="pt-1 flex items-center justify-center gap-1.5 text-[11px] text-slate-400 font-mono">
+        <div className="pt-0.5 flex items-center justify-center gap-1.5 text-[11px] text-slate-400 font-mono">
           <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-          <span>Live instant scan • 1 stamp per 24 hours</span>
+          <span>Live instant scan • 1 self-serve stamp per 24 hours</span>
         </div>
       </div>
     </div>
