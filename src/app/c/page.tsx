@@ -332,6 +332,15 @@ function formatDistance(distKm: number): string {
   return `${Math.round(distKm)} km`;
 }
 
+function getPassKey(pass: any, index: number = 0): string {
+  if (!pass) return `pass_${index}`;
+  if (pass.id) return String(pass.id);
+  if (pass.rewardId) return `${pass.slug}_${pass.rewardId}`;
+  if (pass.passId) return `${pass.slug}_${pass.passId}`;
+  if (pass.rewardTitle) return `${pass.slug}_${String(pass.rewardTitle).replace(/\s+/g, '_').toLowerCase()}`;
+  return `${pass.slug || 'pass'}_${index}`;
+}
+
 function CustomerPortalContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -479,7 +488,7 @@ function CustomerPortalContent() {
   const [selectedPassId, setSelectedPassId] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       try {
-        return localStorage.getItem('reva_selected_pass_id') || localStorage.getItem('reva_selected_pass_slug') || '';
+        return localStorage.getItem('reva_selected_pass_id') || '';
       } catch {}
     }
     return '';
@@ -495,43 +504,84 @@ function CustomerPortalContent() {
     return '';
   });
 
+  const passHolderRef = useRef<HTMLDivElement>(null);
+
+  const selectedPass = useMemo(() => {
+    if (userPasses.length === 0) return null;
+
+    // 1. Precise match by unique pass ID / key (handles multiple passes under same business/slug like CHAI vs Coffee!)
+    if (selectedPassId) {
+      const matchById = userPasses.find((p: any, idx: number) => {
+        const key = getPassKey(p, idx);
+        return (
+          key === selectedPassId ||
+          (p.id && String(p.id) === selectedPassId) ||
+          (p.rewardId && `${p.slug}_${p.rewardId}` === selectedPassId)
+        );
+      });
+      if (matchById) return matchById;
+    }
+
+    // 2. If no matching ID, match by storeParam or selectedPassSlug
+    const targetSlug = storeParam || selectedPassSlug;
+    if (targetSlug) {
+      const matchBySlug = userPasses.find((p: any) => p.slug === targetSlug);
+      if (matchBySlug) return matchBySlug;
+    }
+
+    // 3. Fallback to first pass
+    return userPasses[0];
+  }, [userPasses, selectedPassId, selectedPassSlug, storeParam]);
+
   useEffect(() => {
     if (storeParam) {
       setSelectedPassSlug(storeParam);
       try {
         localStorage.setItem('reva_selected_pass_slug', storeParam);
       } catch {}
+      // If currently selected pass does not belong to storeParam, pick the first pass for this store
+      if (selectedPass && selectedPass.slug !== storeParam) {
+        const matchingStorePass = userPasses.find((p: any) => p.slug === storeParam);
+        if (matchingStorePass) {
+          const key = getPassKey(matchingStorePass);
+          setSelectedPassId(key);
+          try {
+            localStorage.setItem('reva_selected_pass_id', key);
+          } catch {}
+        }
+      }
     }
-  }, [storeParam]);
-
-  const passHolderRef = useRef<HTMLDivElement>(null);
-
-  const selectedPass = useMemo(() => {
-    if (userPasses.length === 0) return null;
-    if (selectedPassSlug) {
-      const matchBySlug = userPasses.find((p: any) => p.slug === selectedPassSlug);
-      if (matchBySlug) return matchBySlug;
-    }
-    return (
-      userPasses.find((p: any) => p.id && p.id === selectedPassId) ||
-      userPasses[0]
-    );
-  }, [userPasses, selectedPassId, selectedPassSlug]);
+  }, [storeParam, selectedPass, userPasses]);
 
   useEffect(() => {
-    if (selectedPass?.id && selectedPass.id !== selectedPassId) {
-      setSelectedPassId(selectedPass.id);
-      try {
-        localStorage.setItem('reva_selected_pass_id', selectedPass.id);
-      } catch {}
+    if (selectedPass && !selectedPassId) {
+      const activeKey = getPassKey(selectedPass);
+      if (activeKey) {
+        setSelectedPassId(activeKey);
+        try {
+          localStorage.setItem('reva_selected_pass_id', activeKey);
+        } catch {}
+      }
     }
   }, [selectedPass, selectedPassId]);
 
-  const handleSelectPass = (idOrSlug: string) => {
+  const handleSelectPass = (idOrSlug: string, targetPass?: any) => {
     sound.playClick();
-    const foundPass = userPasses.find((p: any) => (p.id && p.id === idOrSlug) || p.slug === idOrSlug);
+    const foundPass =
+      targetPass ||
+      userPasses.find((p: any, idx: number) => {
+        const key = getPassKey(p, idx);
+        return (
+          key === idOrSlug ||
+          (p.id && String(p.id) === idOrSlug) ||
+          (p.rewardId && `${p.slug}_${p.rewardId}` === idOrSlug) ||
+          p.slug === idOrSlug
+        );
+      });
+
     if (foundPass) {
-      const pid = foundPass.id || foundPass.slug;
+      const foundIdx = userPasses.indexOf(foundPass);
+      const pid = getPassKey(foundPass, foundIdx >= 0 ? foundIdx : 0);
       setSelectedPassId(pid);
       setSelectedPassSlug(foundPass.slug);
       try {
@@ -835,6 +885,16 @@ function CustomerPortalContent() {
           const parsed = JSON.parse(savedPasses);
           if (Array.isArray(parsed) && parsed.length > 0) {
             setUserPasses(parsed);
+            const savedSelectedId = localStorage.getItem('reva_selected_pass_id');
+            if (savedSelectedId) {
+              const passExists = parsed.some((p: any, idx: number) => {
+                const k = getPassKey(p, idx);
+                return k === savedSelectedId || (p.id && String(p.id) === savedSelectedId);
+              });
+              if (passExists) {
+                setSelectedPassId(savedSelectedId);
+              }
+            }
             const savedSelected = localStorage.getItem('reva_selected_pass_slug');
             const exists = parsed.some((p: any) => p.slug === savedSelected);
             const activeSlug = exists && savedSelected ? savedSelected : parsed[0].slug;
@@ -977,6 +1037,16 @@ function CustomerPortalContent() {
                 setUserPasses(sessionData.passes);
                 localStorage.setItem('reva_customer_passes', JSON.stringify(sessionData.passes));
                 if (sessionData.passes.length > 0) {
+                  const savedPassId = localStorage.getItem('reva_selected_pass_id');
+                  if (savedPassId) {
+                    const passExists = sessionData.passes.some((p: any, idx: number) => {
+                      const k = getPassKey(p, idx);
+                      return k === savedPassId || (p.id && String(p.id) === savedPassId);
+                    });
+                    if (passExists) {
+                      setSelectedPassId(savedPassId);
+                    }
+                  }
                   setSelectedPassSlug((prev) => {
                     const savedSelected = localStorage.getItem('reva_selected_pass_slug');
                     const candidate = storeParam || prev || savedSelected || '';
@@ -2478,15 +2548,18 @@ function CustomerPortalContent() {
                 </div>
               ) : (
                 <div className="space-y-2.5">
-                  {userPasses.map((pass) => {
+                  {userPasses.map((pass, passIdx) => {
                     const isCompleted = pass.stamps >= pass.totalStamps;
-                    const passKey = pass.id || pass.slug;
-                    const isCurrentlySelected = selectedPass ? (pass.id ? pass.id === selectedPass.id : pass.slug === selectedPassSlug) : pass.slug === selectedPassSlug;
+                    const passKey = getPassKey(pass, passIdx);
+                    const selectedPassKey = selectedPass ? getPassKey(selectedPass) : '';
+                    const isCurrentlySelected = selectedPass
+                      ? passKey === selectedPassKey || (pass.id && selectedPass.id ? pass.id === selectedPass.id : false)
+                      : false;
 
                     return (
                       <div
                         key={passKey}
-                        onClick={() => handleSelectPass(passKey)}
+                        onClick={() => handleSelectPass(passKey, pass)}
                         className={`block rounded-2xl p-3.5 border transition-all cursor-pointer hover:scale-[1.01] ${
                           isCurrentlySelected
                             ? isDarkMode
@@ -2531,7 +2604,7 @@ function CustomerPortalContent() {
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleSelectPass(passKey);
+                                handleSelectPass(passKey, pass);
                               }}
                               className={`px-2.5 py-1 rounded-full text-[10px] font-display font-bold uppercase tracking-wider transition-all cursor-pointer ${
                                 isCurrentlySelected
