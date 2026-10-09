@@ -2653,6 +2653,24 @@ class RevaDatabase {
 
     const todayRewards = (rewardsClaimed || []).filter((r) => new Date(r.claimed_at) >= todayStart);
 
+    const recentVisits = allVisits
+      .sort((a, b) => new Date(b.scanned_at).getTime() - new Date(a.scanned_at).getTime())
+      .slice(0, 100)
+      .map((v) => {
+        const mem = updatedMembers.find((m) => m.id === v.membership_id);
+        const cust = mem?.customer || (v as any).customer;
+        const isQr = Boolean(v.staff_note && v.staff_note.toLowerCase().includes('qr'));
+        return {
+          ...v,
+          customer_name: cust?.name || 'Valued Guest',
+          customer_phone: cust?.phone || '—',
+          customer: cust,
+          stamps_added: Number(v.stamp_awarded) || 1,
+          reward_title: (mem as any)?.tier_name || bus.reward_rule?.reward_title || 'Specialty Treat',
+          is_qr: isQr,
+        };
+      });
+
     return {
       business: bus,
       totalRecoveredRevenue: Math.round(totalRecoveredRevenue),
@@ -2670,6 +2688,7 @@ class RevaDatabase {
       rewardsClaimedList: rewardsClaimed || [],
       stampStats,
       recentLogs: enrichedLogs.slice(0, 15),
+      recentVisits,
       members: updatedMembers,
     };
   }

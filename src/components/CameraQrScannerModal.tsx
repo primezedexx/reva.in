@@ -34,6 +34,7 @@ interface CameraQrScannerModalProps {
   isCooldownActive?: boolean;
   cooldownHours?: number;
   cooldownMins?: number;
+  cooldownUntil?: number;
   onStampClaimed?: (result: {
     success: boolean;
     cooldownActive?: boolean;
@@ -58,6 +59,7 @@ export default function CameraQrScannerModal({
   isCooldownActive,
   cooldownHours = 24,
   cooldownMins = 0,
+  cooldownUntil,
   onStampClaimed,
 }: CameraQrScannerModalProps) {
   const router = useRouter();
@@ -111,6 +113,40 @@ export default function CameraQrScannerModal({
   const [hasTorch, setHasTorch] = useState(false);
   const [isTorchOn, setIsTorchOn] = useState(false);
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
+
+  // Real-time ticking cooldown countdown (updates second-by-second)
+  const [secondsRemaining, setSecondsRemaining] = useState<number>(0);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const calculateSeconds = () => {
+      if (cooldownUntil && cooldownUntil > 0) {
+        return Math.max(0, Math.floor((cooldownUntil - Date.now()) / 1000));
+      }
+      if (isCooldownActive) {
+        return Math.max(0, (cooldownHours || 0) * 3600 + (cooldownMins || 0) * 60);
+      }
+      return 0;
+    };
+
+    setSecondsRemaining(calculateSeconds());
+
+    const interval = setInterval(() => {
+      if (cooldownUntil && cooldownUntil > 0) {
+        const left = Math.max(0, Math.floor((cooldownUntil - Date.now()) / 1000));
+        setSecondsRemaining(left);
+      } else {
+        setSecondsRemaining((prev) => Math.max(0, prev - 1));
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isOpen, isCooldownActive, cooldownUntil, cooldownHours, cooldownMins]);
+
+  const liveHours = Math.floor(secondsRemaining / 3600);
+  const liveMins = Math.floor((secondsRemaining % 3600) / 60);
+  const liveSecs = secondsRemaining % 60;
+  const isCurrentlyInCooldown = Boolean(isCooldownActive && secondsRemaining > 0);
 
   // Initialize native BarcodeDetector ONCE on client mount
   useEffect(() => {
@@ -837,15 +873,15 @@ export default function CameraQrScannerModal({
           )}
         </div>
 
-        {/* Viewfinder Bottom Status: Cooldown Countdown or Scan Prompt */}
-        {isCooldownActive ? (
+        {/* Viewfinder Bottom Status: Real-time Cooldown Countdown or Ready to Scan */}
+        {isCurrentlyInCooldown ? (
           <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs text-left flex items-start gap-2.5 shadow-2xs animate-in fade-in">
-            <Clock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-            <div className="space-y-0.5">
-              <div className="font-bold flex items-center gap-1.5 text-amber-950">
-                <span>24h Scan Cooldown Active</span>
-                <span className="text-[10px] bg-amber-200/90 text-amber-950 px-2 py-0.5 rounded-full font-mono font-bold">
-                  {cooldownHours}h {cooldownMins}m left
+            <Clock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5 animate-pulse" />
+            <div className="space-y-0.5 flex-1 min-w-0">
+              <div className="font-bold flex items-center justify-between gap-1 text-amber-950">
+                <span className="truncate">24h Cooldown Active</span>
+                <span className="text-[11px] bg-amber-200/90 text-amber-950 px-2.5 py-0.5 rounded-full font-mono font-bold shrink-0">
+                  {liveHours}h {liveMins}m {liveSecs.toString().padStart(2, '0')}s left
                 </span>
               </div>
               <p className="text-[11px] text-amber-800 leading-tight">

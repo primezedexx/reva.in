@@ -98,6 +98,7 @@ import {
   PageBgTone,
   CardRadiusType,
   RewardClaimed,
+  StampActivityLog,
 } from '@/types/database';
 import {
   THEME_PRESETS,
@@ -116,6 +117,23 @@ function formatRedeemedDate(isoStr?: string) {
     const datePart = d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
     const timePart = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
     return `${datePart} • ${timePart}`;
+  } catch {
+    return isoStr;
+  }
+}
+
+function formatStampAuditDate(isoStr?: string) {
+  if (!isoStr) return '—';
+  try {
+    const d = new Date(isoStr);
+    const now = new Date();
+    const isToday = d.toDateString() === now.toDateString();
+    const timePart = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true });
+    if (isToday) {
+      return `Today at ${timePart}`;
+    }
+    const datePart = d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    return `${datePart} at ${timePart}`;
   } catch {
     return isoStr;
   }
@@ -230,8 +248,33 @@ function OwnerDashboardContent() {
       allTime: { totalStamps: number; totalVisits: number; counterStamps: number; counterVisits: number; qrStamps: number; qrScans: number };
     };
     recentLogs: WhatsAppLog[];
+    recentVisits?: StampActivityLog[];
     members: Membership[];
   } | null>(null);
+
+  // Stats Sub-Tab state & Live Stamp Tracking
+  const [statsActiveSection, setStatsActiveSection] = useState<'stamps' | 'crm' | 'whatsapp'>('stamps');
+  const [stampSearch, setStampSearch] = useState('');
+  const [stampSourceFilter, setStampSourceFilter] = useState<'all' | 'qr' | 'cashier'>('all');
+
+  const filteredStampActivity = useMemo(() => {
+    let list: StampActivityLog[] = metrics?.recentVisits || [];
+    if (stampSourceFilter === 'qr') {
+      list = list.filter((v) => v.is_qr);
+    } else if (stampSourceFilter === 'cashier') {
+      list = list.filter((v) => !v.is_qr);
+    }
+    if (stampSearch.trim()) {
+      const q = stampSearch.toLowerCase().trim();
+      list = list.filter((v) =>
+        (v.customer_name && v.customer_name.toLowerCase().includes(q)) ||
+        (v.customer_phone && v.customer_phone.includes(q)) ||
+        (v.reward_title && v.reward_title.toLowerCase().includes(q)) ||
+        (v.staff_note && v.staff_note.toLowerCase().includes(q))
+      );
+    }
+    return list;
+  }, [metrics?.recentVisits, stampSourceFilter, stampSearch]);
 
   // Rewards Given Log state
   const [rewardsSearch, setRewardsSearch] = useState('');
@@ -3942,11 +3985,303 @@ function OwnerDashboardContent() {
 
         {/* ========================================================================= */}
         {/* ========================================================================= */}
-        {/* TAB 3: STATS (Recent WhatsApp Offers, Inactive Customers, CRM Directory)   */}
+        {/* TAB 3: STATS (Stamp Audit Log, CRM Directory, Recent WhatsApp Offers)     */}
         {/* ========================================================================= */}
         {activeTab === 'stats' && (
           <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-200">
-            {/* 1. RECENT WHATSAPP OFFERS DROPDOWN ACCORDION (ON TOP) */}
+            {/* SUB-SECTION SELECTOR FOR STATS: Stamps Activity Log, CRM Directory, WhatsApp Offers */}
+            <div className="flex items-center gap-2 p-1.5 bg-slate-100 rounded-2xl w-full sm:w-auto overflow-x-auto no-scrollbar shadow-inner">
+              <button
+                type="button"
+                onClick={() => {
+                  setStatsActiveSection('stamps');
+                  sound.playClick();
+                }}
+                className={`flex-1 sm:flex-none px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                  statsActiveSection === 'stamps'
+                    ? 'bg-[#0F172A] text-white shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                }`}
+              >
+                <Zap className="w-3.5 h-3.5 text-amber-400" />
+                <span>Stamp Audit Log</span>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold ${
+                  statsActiveSection === 'stamps' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
+                }`}>
+                  {metrics?.recentVisits?.length || 0}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setStatsActiveSection('crm');
+                  sound.playClick();
+                }}
+                className={`flex-1 sm:flex-none px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                  statsActiveSection === 'crm'
+                    ? 'bg-[#0F172A] text-white shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                }`}
+              >
+                <Users className="w-3.5 h-3.5 text-blue-500" />
+                <span>Customer CRM</span>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold ${
+                  statsActiveSection === 'crm' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
+                }`}>
+                  {metrics?.members?.length || 0}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setStatsActiveSection('whatsapp');
+                  sound.playClick();
+                }}
+                className={`flex-1 sm:flex-none px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                  statsActiveSection === 'whatsapp'
+                    ? 'bg-[#0F172A] text-white shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                }`}
+              >
+                <MessageSquare className="w-3.5 h-3.5 text-emerald-500" />
+                <span>WhatsApp Offers</span>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold ${
+                  statsActiveSection === 'whatsapp' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
+                }`}>
+                  {metrics?.recentLogs?.length || 0}
+                </span>
+              </button>
+            </div>
+
+            {/* SECTION A: STAMP AUDIT LOG (LIVE TIMESTAMP FEED) */}
+            {statsActiveSection === 'stamps' && (
+              <div className="bg-white rounded-3xl border border-slate-100 card-soft-shadow overflow-hidden space-y-4 animate-in fade-in duration-200">
+                {/* Header & Controls */}
+                <div className="p-4 sm:p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center font-bold">
+                        <Award className="w-4 h-4 text-amber-600" />
+                      </div>
+                      <h3 className="font-display font-bold text-base sm:text-lg text-[#0F172A]">
+                        Live Stamp Punch History
+                      </h3>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Track who earned stamps, what time they scanned, which reward card was punched, and whether via QR or cashier.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full sm:w-auto">
+                    {/* Search */}
+                    <div className="relative flex-1 sm:w-60">
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <input
+                        type="text"
+                        value={stampSearch}
+                        onChange={(e) => setStampSearch(e.target.value)}
+                        placeholder="Search customer, phone, card..."
+                        className="w-full pl-8 pr-7 py-2 rounded-xl border border-slate-200 text-xs bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#0F172A]"
+                      />
+                      {stampSearch && (
+                        <button
+                          onClick={() => setStampSearch('')}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Filter Pills */}
+                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 no-scrollbar">
+                      <button
+                        type="button"
+                        onClick={() => setStampSourceFilter('all')}
+                        className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                          stampSourceFilter === 'all'
+                            ? 'bg-[#0F172A] text-white shadow-2xs'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200/60'
+                        }`}
+                      >
+                        All ({metrics?.recentVisits?.length || 0})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStampSourceFilter('qr')}
+                        className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                          stampSourceFilter === 'qr'
+                            ? 'bg-emerald-700 text-white shadow-2xs'
+                            : 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100'
+                        }`}
+                      >
+                        📷 QR Scans ({(metrics?.recentVisits || []).filter((v) => v.is_qr).length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStampSourceFilter('cashier')}
+                        className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                          stampSourceFilter === 'cashier'
+                            ? 'bg-indigo-700 text-white shadow-2xs'
+                            : 'bg-indigo-50 text-indigo-800 border border-indigo-200 hover:bg-indigo-100'
+                        }`}
+                      >
+                        🧑‍💼 Cashier ({(metrics?.recentVisits || []).filter((v) => !v.is_qr).length})
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Stamp Table / Cards */}
+                {filteredStampActivity.length > 0 ? (
+                  <>
+                    {/* Desktop Table View */}
+                    <div className="hidden md:block overflow-x-auto">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="bg-slate-50/80 border-b border-slate-100 text-slate-500 font-semibold font-mono text-[11px] uppercase tracking-wider">
+                            <th className="py-3 px-6">Customer</th>
+                            <th className="py-3 px-6">Reward Card</th>
+                            <th className="py-3 px-6">Method / Source</th>
+                            <th className="py-3 px-6 text-center">Stamps Added</th>
+                            <th className="py-3 px-6 text-right">Punch Time</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {filteredStampActivity.map((visit) => (
+                            <tr key={visit.id} className="hover:bg-slate-50/70 transition-colors">
+                              <td className="py-4 px-6">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-2xs">
+                                    {(visit.customer_name || 'G')[0].toUpperCase()}
+                                  </div>
+                                  <div>
+                                    <div className="font-display font-bold text-sm text-[#0F172A]">
+                                      {visit.customer_name || 'Valued Guest'}
+                                    </div>
+                                    <div className="text-slate-500 font-mono text-[11px] mt-0.5">
+                                      {visit.customer_phone || '—'}
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+
+                              <td className="py-4 px-6">
+                                <div className="space-y-1">
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-amber-50 text-amber-900 border border-amber-200/80 text-[11px] font-semibold">
+                                    <Sparkles className="w-3 h-3 text-amber-500" />
+                                    <span>{visit.reward_title || 'Specialty Treat'}</span>
+                                  </span>
+                                  {visit.staff_note && (
+                                    <p className="text-[10px] text-slate-400 font-mono truncate max-w-[200px]">
+                                      {visit.staff_note}
+                                    </p>
+                                  )}
+                                </div>
+                              </td>
+
+                              <td className="py-4 px-6">
+                                {visit.is_qr ? (
+                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                    <Camera className="w-3 h-3 text-emerald-600" />
+                                    <span>Self-Serve QR Scan</span>
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-indigo-50 text-indigo-800 border border-indigo-200">
+                                    <CheckCircle2 className="w-3 h-3 text-indigo-600" />
+                                    <span>Cashier Counter Punch</span>
+                                  </span>
+                                )}
+                              </td>
+
+                              <td className="py-4 px-6 text-center">
+                                <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-[#0F172A] text-white font-mono font-bold text-xs shadow-2xs">
+                                  +{visit.stamps_added || 1} Stamp{(visit.stamps_added || 1) > 1 ? 's' : ''}
+                                </span>
+                              </td>
+
+                              <td className="py-4 px-6 text-right font-mono text-xs">
+                                <div className="text-slate-900 font-semibold">
+                                  {formatStampAuditDate(visit.scanned_at)}
+                                </div>
+                                <div className="text-[10px] text-slate-400">
+                                  {new Date(visit.scanned_at).toLocaleDateString('en-IN', {
+                                    day: 'numeric',
+                                    month: 'short',
+                                    year: 'numeric',
+                                  })}
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Mobile Consolidated Cards View */}
+                    <div className="block md:hidden divide-y divide-slate-100">
+                      {filteredStampActivity.map((visit) => (
+                        <div key={visit.id} className="p-4 space-y-2.5">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-2xs">
+                                {(visit.customer_name || 'G')[0].toUpperCase()}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="font-display font-bold text-sm text-[#0F172A] truncate">
+                                  {visit.customer_name || 'Valued Guest'}
+                                </div>
+                                <div className="text-xs text-slate-500 font-mono">
+                                  {visit.customer_phone || '—'}
+                                </div>
+                              </div>
+                            </div>
+
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#0F172A] text-white font-mono font-bold text-xs shrink-0 shadow-2xs">
+                              +{visit.stamps_added || 1} Stamp{(visit.stamps_added || 1) > 1 ? 's' : ''}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between gap-2 text-xs flex-wrap">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-amber-50 text-amber-900 border border-amber-200/80 text-[11px] font-semibold">
+                              <Sparkles className="w-3 h-3 text-amber-500" />
+                              <span className="truncate max-w-[150px]">{visit.reward_title || 'Specialty Treat'}</span>
+                            </span>
+
+                            {visit.is_qr ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                <Camera className="w-2.5 h-2.5 text-emerald-600" />
+                                <span>QR Scan</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-50 text-indigo-800 border border-indigo-200">
+                                <CheckCircle2 className="w-2.5 h-2.5 text-indigo-600" />
+                                <span>Cashier</span>
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center justify-between text-[11px] text-slate-500 font-mono pt-1 border-t border-slate-50">
+                            <span>{formatStampAuditDate(visit.scanned_at)}</span>
+                            {visit.spend_amount ? <span>₹{visit.spend_amount}</span> : null}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="p-12 text-center text-slate-400 text-xs font-mono space-y-2">
+                    <Award className="w-8 h-8 text-slate-300 mx-auto" />
+                    <p>No stamp activity recorded yet matching filter.</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* SECTION B: RECENT WHATSAPP OFFERS (ACCORDION) */}
+            {statsActiveSection === 'whatsapp' && (
             <div className="bg-white rounded-3xl border border-slate-100 card-soft-shadow overflow-hidden transition-all">
               <div
                 onClick={() => {
@@ -4174,9 +4509,10 @@ function OwnerDashboardContent() {
                 </div>
               )}
             </div>
+          )}
 
             {/* 2. INACTIVE CUSTOMERS / DUE FOR A VISIT LIST (MIDDLE) */}
-            {(() => {
+            {(statsActiveSection === 'crm' || statsActiveSection === 'whatsapp') && (() => {
               const overdueMembers = (metrics?.members || []).filter(
                 (m) => m.is_at_risk && !dismissedOverdueIds[m.id]
               );
@@ -4277,6 +4613,7 @@ function OwnerDashboardContent() {
             })()}
 
             {/* REGISTERED CUSTOMERS CRM DIRECTORY */}
+            {statsActiveSection === 'crm' && (
             <div className="bg-white rounded-3xl border border-slate-100 card-soft-shadow overflow-hidden space-y-4">
               <div className="p-4 sm:p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
@@ -4554,6 +4891,7 @@ function OwnerDashboardContent() {
                 </table>
               </div>
             </div>
+            )}
           </div>
         )}
 

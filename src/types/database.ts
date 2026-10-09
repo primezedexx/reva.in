@@ -196,6 +196,15 @@ export interface Visit {
   stamp_awarded: number;
 }
 
+export interface StampActivityLog extends Visit {
+  customer_name?: string;
+  customer_phone?: string;
+  customer?: Customer;
+  reward_title?: string;
+  stamps_added?: number;
+  is_qr?: boolean;
+}
+
 export type WhatsAppMessageType = 'winback_nudge' | 'welcome_stamp' | 'reward_unlocked' | 'manual_custom';
 export type WhatsAppStatus = 'queued' | 'sent' | 'delivered' | 'read' | 'failed';
 

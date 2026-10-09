@@ -654,6 +654,27 @@ function CustomerPortalContent() {
     return null;
   }, [selectedPass, currentStore]);
 
+  // Dynamically calculate remaining days for this pass (counts down day by day: 60 -> 59 -> 58...)
+  const activePassRemainingDays = useMemo(() => {
+    if (!activePassExpiryDays || activePassExpiryDays <= 0) return null;
+    if (!selectedPass) return activePassExpiryDays;
+
+    const startDateStr = selectedPass.joined_at || (selectedPass as any).created_at || (selectedPass as any).started_at;
+    if (!startDateStr) {
+      return activePassExpiryDays;
+    }
+
+    const startTime = new Date(startDateStr).getTime();
+    if (isNaN(startTime) || startTime <= 0) {
+      return activePassExpiryDays;
+    }
+
+    const elapsedMs = Math.max(0, Date.now() - startTime);
+    const elapsedDays = Math.floor(elapsedMs / (24 * 60 * 60 * 1000));
+    const remainingDays = Math.max(0, activePassExpiryDays - elapsedDays);
+    return remainingDays;
+  }, [activePassExpiryDays, selectedPass]);
+
   // Unstarted rewards belonging EXCLUSIVELY to the current cafe/store
   const availableStoreRewardsToStart = useMemo(() => {
     if (!currentStore) return [];
@@ -2378,7 +2399,13 @@ function CustomerPortalContent() {
                               rewardTitle: selectedPass.rewardTitle,
                               stamps: selectedPass.stamps,
                               totalNeeded: selectedPass.totalStamps,
-                              expiry: activePassExpiryDays
+                              expiry: activePassRemainingDays !== null
+                                ? activePassRemainingDays > 1
+                                  ? `Expires in ${activePassRemainingDays} days`
+                                  : activePassRemainingDays === 1
+                                  ? 'Expires tomorrow'
+                                  : 'Expires today'
+                                : activePassExpiryDays
                                 ? `Expires in ${activePassExpiryDays} days`
                                 : selectedPass.reward_rule?.expiry_days
                                 ? `Expires in ${selectedPass.reward_rule.expiry_days} days`
@@ -2406,7 +2433,15 @@ function CustomerPortalContent() {
                               <Clock className="w-3 h-3 text-amber-300 shrink-0" />
                               <span>Stamps validity:</span>
                             </span>
-                            <span className="font-bold text-amber-200">{activePassExpiryDays} days to complete</span>
+                            <span className="font-bold text-amber-200">
+                              {activePassRemainingDays !== null
+                                ? activePassRemainingDays > 1
+                                  ? `${activePassRemainingDays} days to complete`
+                                  : activePassRemainingDays === 1
+                                  ? '1 day left • Expires tomorrow'
+                                  : 'Expires today'
+                                : `${activePassExpiryDays} days to complete`}
+                            </span>
                           </div>
                         )}
                       </div>
@@ -3963,6 +3998,7 @@ function CustomerPortalContent() {
         isCooldownActive={isGlobalCooldownActive}
         cooldownHours={remainingCooldownHours}
         cooldownMins={remainingCooldownMins}
+        cooldownUntil={currentStoreQrStamp > 0 ? currentStoreQrStamp + COOLDOWN_MS : 0}
         onStampClaimed={(res) => {
           if (res.success) {
             sound.playRewardFanfare();
@@ -3979,16 +4015,17 @@ function CustomerPortalContent() {
               }
             } catch {}
 
-            // Reactive immediate in-place update of userPasses: update stamps for only this pass, and update last_qr_stamp_at across ALL passes
+            // Reactive immediate in-place update of userPasses: update stamps for only this pass, and update last_qr_stamp_at for only this store
             if (res.business?.slug) {
               setUserPasses((prev) => {
                 const updated = prev.map((p) => {
+                  const isThisStore = p.slug === res.business?.slug;
                   const isThisPass =
-                    p.slug === res.business?.slug &&
+                    isThisStore &&
                     ((claimedRewardId && p.rewardId === claimedRewardId) || (!claimedRewardId && !p.rewardId));
                   return {
                     ...p,
-                    last_qr_stamp_at: nowIso,
+                    ...(isThisStore ? { last_qr_stamp_at: nowIso } : {}),
                     ...(isThisPass
                       ? {
                           stamps: res.passStamps ?? res.membership?.stamps ?? p.stamps + 1,
