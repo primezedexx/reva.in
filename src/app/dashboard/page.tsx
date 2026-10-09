@@ -1934,7 +1934,7 @@ function OwnerDashboardContent() {
         // Footer
         ctx.fillStyle = '#94A3B8';
         ctx.font = 'bold 15px "Space Mono", monospace';
-        ctx.fillText('Powered by reva.in • No App Needed', width / 2, cardY + cardH - 35);
+        ctx.fillText('Powered by siplo.in • No App Needed', width / 2, cardY + cardH - 35);
       }
 
       // Convert to PNG and Trigger Instant Download
@@ -1980,7 +1980,7 @@ function OwnerDashboardContent() {
                 </svg>
               </div>
               <div className="flex items-baseline gap-0.5 sm:gap-1">
-                <span className="font-display text-lg sm:text-xl font-bold tracking-tight text-[#0F172A]">Reva</span>
+                <span className="font-display text-lg sm:text-xl font-bold tracking-tight text-[#0F172A]">Siplo</span>
                 <span className="text-slate-400 font-display font-medium text-sm sm:text-base">.in</span>
               </div>
             </div>
@@ -2088,7 +2088,7 @@ function OwnerDashboardContent() {
                 </svg>
               </div>
               <div className="flex items-baseline gap-0.5 sm:gap-1">
-                <span className="font-display text-lg sm:text-xl font-bold tracking-tight text-[#0F172A]">Reva</span>
+                <span className="font-display text-lg sm:text-xl font-bold tracking-tight text-[#0F172A]">Siplo</span>
                 <span className="text-slate-400 font-display font-medium text-sm sm:text-base">.in</span>
               </div>
             </Link>
@@ -4555,7 +4555,7 @@ function OwnerDashboardContent() {
                 Profile &amp; Settings
               </h1>
               <p className="text-xs sm:text-sm text-slate-500 mt-1">
-                Manage your Reva merchant profile, storefront photo, and business details
+                Manage your Siplo merchant profile, storefront photo, and business details
               </p>
             </div>
 
@@ -4632,7 +4632,7 @@ function OwnerDashboardContent() {
                 {/* Status Pill Badge */}
                 <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-slate-50 text-slate-700 text-[11px] font-mono font-semibold border border-slate-200">
                   <Sparkles className="w-3 h-3 text-amber-500" />
-                  <span>ACTIVE STORE • REVA MERCHANT</span>
+                  <span>ACTIVE STORE • SIPLO MERCHANT</span>
                 </div>
               </div>
             </div>
@@ -4848,7 +4848,7 @@ function OwnerDashboardContent() {
 
                 {/* Help & Support */}
                 <a
-                  href="mailto:support@reva.in?subject=Merchant%20Support%20Request"
+                  href="mailto:support@siplo.in?subject=Merchant%20Support%20Request"
                   className="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors cursor-pointer block group"
                 >
                   <div className="flex items-center gap-3.5">
@@ -4857,7 +4857,7 @@ function OwnerDashboardContent() {
                     </div>
                     <div>
                       <div className="font-display font-bold text-xs sm:text-sm text-slate-900">Help &amp; Support</div>
-                      <div className="text-xs text-slate-400">Email: support@reva.in</div>
+                      <div className="text-xs text-slate-400">Email: support@siplo.in</div>
                     </div>
                   </div>
                   <ExternalLink className="w-4 h-4 text-slate-400" />
@@ -5989,7 +5989,7 @@ function OwnerDashboardContent() {
                                 </label>
                                 <div className="flex items-center rounded-xl border border-slate-200 overflow-hidden bg-slate-50 focus-within:ring-2 focus-within:ring-[#0F172A]">
                                   <span className="px-3 text-[11px] font-mono text-slate-400 select-none bg-slate-100/70 border-r border-slate-200 py-2">
-                                    reva.in/c/
+                                    siplo.in/c/
                                   </span>
                                   <input
                                     type="text"
@@ -6730,7 +6730,7 @@ export default function OwnerDashboardPage() {
               <path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M4.93 19.07L19.07 4.93" />
             </svg>
           </div>
-          <p className="text-xs font-mono font-bold uppercase tracking-widest text-slate-400">Loading Reva Dashboard...</p>
+          <p className="text-xs font-mono font-bold uppercase tracking-widest text-slate-400">Loading Siplo Dashboard...</p>
         </div>
       }
     >

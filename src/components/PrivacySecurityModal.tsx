@@ -204,7 +204,7 @@ export default function PrivacySecurityModal({
 
           {/* Privacy Inquiry Link */}
           <a
-            href="mailto:primezedexx@gmail.com?subject=Reva%20Privacy%20Inquiry"
+            href="mailto:primezedexx@gmail.com?subject=Siplo%20Privacy%20Inquiry"
             className="w-full py-2.5 px-3 rounded-2xl bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 font-display font-medium text-[11px] border border-slate-200 dark:border-slate-800 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
           >
             <Mail className="w-3.5 h-3.5 text-blue-500" />

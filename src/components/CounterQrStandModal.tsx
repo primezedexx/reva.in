@@ -267,7 +267,7 @@ export default function CounterQrStandModal({
         // Footer
         ctx.fillStyle = '#94A3B8';
         ctx.font = 'bold 15px "Space Mono", monospace';
-        ctx.fillText('Powered by reva.in • Zero App Friction', width / 2, cardY + cardH - 35);
+        ctx.fillText('Powered by siplo.in • Zero App Friction', width / 2, cardY + cardH - 35);
       }
 
       // Convert to PNG and Trigger Instant Download
@@ -462,7 +462,7 @@ export default function CounterQrStandModal({
                 </div>
 
                 <div className="text-[8px] font-mono text-slate-400 pt-0.5">
-                  Powered by reva.in • Zero App Friction
+                  Powered by siplo.in • Zero App Friction
                 </div>
               </div>
             </div>

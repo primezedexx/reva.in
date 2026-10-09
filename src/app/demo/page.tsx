@@ -47,7 +47,7 @@ export default function DemoSimulationPage() {
   const [wasConverted, setWasConverted] = useState(false);
 
   // Host URL
-  const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://reva.in';
+  const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://siplo.in';
   const cleanPhone = testPhone.replace(/\D/g, '');
   const offerCode = `WINBACK-${testName.replace(/\s+/g, '').toUpperCase().slice(0, 5)}-${Math.floor(1000 + Math.random() * 9000)}`;
   const magicCardUrl = `${baseUrl}/c/boba-brew?phone=${encodeURIComponent(testPhone)}&offer=${encodeURIComponent(offerCode)}`;
@@ -131,7 +131,7 @@ export default function DemoSimulationPage() {
             </svg>
           </div>
           <div className="flex items-baseline gap-1">
-            <span className="font-display text-xl font-bold tracking-tight text-[#0F172A]">Reva</span>
+            <span className="font-display text-xl font-bold tracking-tight text-[#0F172A]">Siplo</span>
             <span className="text-slate-400 font-display font-medium text-base">.in</span>
           </div>
           <span className="text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 ml-2">
@@ -165,7 +165,7 @@ export default function DemoSimulationPage() {
             Interactive Proof Walkthrough
           </span>
           <h1 className="font-display text-3xl sm:text-4xl font-bold text-[#0F172A] tracking-tight">
-            How Reva Rescues Churned Revenue in 4 Steps
+            How Siplo Rescues Churned Revenue in 4 Steps
           </h1>
           <p className="text-xs sm:text-sm text-slate-600">
             Test with our sample customer (Aarav) or <b className="text-[#0F172A]">type your actual mobile number</b> below to receive a real WhatsApp nudge on your physical phone!
@@ -304,7 +304,7 @@ export default function DemoSimulationPage() {
                 )}
 
                 <p className="text-xs text-slate-600 leading-relaxed">
-                  {testName} hasn&apos;t visited in 12 days. Reva detects the lapse and prepares a high-converting win-back nudge.
+                  {testName} hasn&apos;t visited in 12 days. Siplo detects the lapse and prepares a high-converting win-back nudge.
                 </p>
 
                 <button
@@ -314,7 +314,7 @@ export default function DemoSimulationPage() {
                   }}
                   className="w-full py-3.5 rounded-xl bg-[#0F172A] text-white font-bold text-xs sm:text-sm hover:bg-black transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md"
                 >
-                  <span>Step 2: Let Reva Send a Win-Back Nudge</span>
+                  <span>Step 2: Let Siplo Send a Win-Back Nudge</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
@@ -331,7 +331,7 @@ export default function DemoSimulationPage() {
                 <h3 className="font-display text-xl font-bold text-[#0F172A]">Daily Cron Engine Activation</h3>
 
                 <p className="text-xs text-slate-600 leading-relaxed">
-                  Reva’s daily cron detects that {testName} is overdue. It crafts a personalized WhatsApp message with their stamp progress (2 left!) and a free Belgian Waffle offer.
+                  Siplo’s daily cron detects that {testName} is overdue. It crafts a personalized WhatsApp message with their stamp progress (2 left!) and a free Belgian Waffle offer.
                 </p>
 
                 <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 font-mono text-xs text-slate-700 space-y-1.5">
@@ -372,7 +372,7 @@ export default function DemoSimulationPage() {
                 <h3 className="font-display text-xl font-bold text-[#0F172A]">{testName} Receives WhatsApp Nudge</h3>
 
                 <p className="text-xs text-slate-600 leading-relaxed">
-                  The message has been prepared and logged in Reva! You can open it right on your phone via real WhatsApp, or proceed to simulate the counter scan.
+                  The message has been prepared and logged in Siplo! You can open it right on your phone via real WhatsApp, or proceed to simulate the counter scan.
                 </p>
 
                 {/* Direct Real WhatsApp Launcher Button */}
@@ -420,7 +420,7 @@ export default function DemoSimulationPage() {
                 <h3 className="font-display text-xl font-bold text-[#0F172A]">🎉 +₹280 Recovered Revenue!</h3>
 
                 <p className="text-xs text-slate-600 leading-relaxed">
-                  When the counter staff punched the stamp, Reva matched the scan against {testName}&apos;s open WhatsApp log, marking <b>converted = true</b> and updating your dashboard revenue in real-time.
+                  When the counter staff punched the stamp, Siplo matched the scan against {testName}&apos;s open WhatsApp log, marking <b>converted = true</b> and updating your dashboard revenue in real-time.
                 </p>
 
                 <div className="p-4 bg-[#0F172A] text-white rounded-2xl shadow-md text-xs space-y-1">

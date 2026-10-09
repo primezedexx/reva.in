@@ -105,6 +105,7 @@ export async function openRazorpayCheckout(options: RazorpayCheckoutOptions) {
 
     const rzpOptions = {
       key: orderData.keyId,
+      name: 'Siplo',
       amount: orderData.amount,
       currency: orderData.currency || 'INR',
       description: orderData.isUpgrade

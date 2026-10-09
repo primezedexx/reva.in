@@ -2043,7 +2043,7 @@ function CustomerPortalContent() {
   // Sign out
   const handleSignOut = async () => {
     sound.playClick();
-    if (confirm('Are you sure you want to sign out from your Reva pass?')) {
+    if (confirm('Are you sure you want to sign out from your Siplo pass?')) {
       try {
         await supabase.auth.signOut();
       } catch {
@@ -2106,7 +2106,7 @@ function CustomerPortalContent() {
               </svg>
             </div>
             <div className="flex items-baseline gap-0.5">
-              <span className="font-display font-bold text-lg tracking-tight text-slate-900 dark:text-white">Reva</span>
+              <span className="font-display font-bold text-lg tracking-tight text-slate-900 dark:text-white">Siplo</span>
               <span className="text-slate-400 font-display text-xs font-medium">.in</span>
             </div>
           </Link>
@@ -2846,7 +2846,7 @@ function CustomerPortalContent() {
                     <p className="text-xs text-slate-500 leading-relaxed">
                       {searchQuery || selectedCategory !== 'All'
                         ? 'Try clearing your search filters to explore all available spots.'
-                        : 'Only real, verified cafes are listed on Reva. New partner cafes are onboarding regularly!'}
+                        : 'Only real, verified cafes are listed on Siplo. New partner cafes are onboarding regularly!'}
                     </p>
                   </div>
                   {!(searchQuery || selectedCategory !== 'All') && (
@@ -3233,7 +3233,7 @@ function CustomerPortalContent() {
               const cleanPhone = storePhone.replace(/\D/g, '');
               const waNumber = cleanPhone.startsWith('91') ? cleanPhone : cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
               const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(
-                `Hi ${selectedPass.name}, I'm a Reva loyalty pass member!`
+                `Hi ${selectedPass.name}, I'm a Siplo loyalty pass member!`
               )}`;
               const googleReview =
                 selectedPass.googleReviewUrl ||
@@ -3452,7 +3452,7 @@ function CustomerPortalContent() {
                 Profile &amp; Settings
               </h1>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Manage your Reva customer pass, photo, and preferences
+                Manage your Siplo customer pass, photo, and preferences
               </p>
             </div>
 
@@ -3637,7 +3637,7 @@ function CustomerPortalContent() {
                   </div>
                   <div>
                     <div className="text-[11px] uppercase font-mono font-bold text-slate-500 dark:text-slate-400">
-                      {selectedPass ? `Member of ${selectedPass.name}` : 'Joined Reva'}
+                      {selectedPass ? `Member of ${selectedPass.name}` : 'Joined Siplo'}
                     </div>
                     <div className="font-display font-bold text-xs text-slate-900 dark:text-white pt-0.5">
                       {formatExactRegistrationDate(selectedPass?.joined_at || registeredAt)}
@@ -3713,7 +3713,7 @@ function CustomerPortalContent() {
 
                 {/* Help & Support */}
                 <a
-                  href="mailto:primezedexx@gmail.com?subject=Reva%20Support%20Request"
+                  href="mailto:primezedexx@gmail.com?subject=Siplo%20Support%20Request"
                   className="p-3.5 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer block"
                 >
                   <div className="flex items-center gap-3">
@@ -4013,7 +4013,7 @@ function CustomerPortalContent() {
                 <div className="text-right">
                   <div className="text-[10px] text-slate-400">Registered Phone / ID</div>
                   <div className="font-mono font-bold text-amber-300">
-                    {customerPhone || 'PASS-REVA'}
+                    {customerPhone || 'PASS-SIPLO'}
                   </div>
                 </div>
               </div>
@@ -4106,7 +4106,7 @@ function CustomerPortalContent() {
 
             <div className="space-y-1">
               <h3 className="font-display font-bold text-lg">Edit Profile</h3>
-              <p className="text-xs text-slate-500">Update your photo, name, and email on your Reva Pass</p>
+              <p className="text-xs text-slate-500">Update your photo, name, and email on your Siplo Pass</p>
             </div>
 
             {/* Photo Upload Section */}

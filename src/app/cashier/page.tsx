@@ -263,7 +263,7 @@ function CashierTerminalContent() {
                   <path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M4.93 19.07L19.07 4.93" />
                 </svg>
               </div>
-              <span className="font-display text-lg font-black tracking-tight">Reva</span>
+              <span className="font-display text-lg font-black tracking-tight">Siplo</span>
             </Link>
             <div className="h-5 w-[1px] bg-slate-700" />
             <div className="flex items-center gap-2">

@@ -15,9 +15,9 @@ const plusJakartaSans = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: 'Reva — Digital Loyalty Card & WhatsApp Customer Win-Back for Cafés',
+  title: 'Siplo — Digital Loyalty Card & WhatsApp Customer Win-Back for Cafés',
   description:
-    'Reva gives your customers a digital stamp card with no app to install. See who stopped visiting and bring back customers with one tap on WhatsApp. Perfect café loyalty program.',
+    'Siplo gives your customers a digital stamp card with no app to install. See who stopped visiting and bring back customers with one tap on WhatsApp. Perfect café loyalty program.',
   keywords: [
     'digital loyalty card',
     'café loyalty program',
@@ -26,19 +26,20 @@ export const metadata: Metadata = {
     'bring back customers',
     'restaurant loyalty program',
     'stamp card wallet',
+    'siplo.in',
   ],
   openGraph: {
-    title: 'Reva — Digital Loyalty Card & WhatsApp Customer Win-Back for Cafés',
+    title: 'Siplo — Digital Loyalty Card & WhatsApp Customer Win-Back for Cafés',
     description:
       'Digital stamp card with no app to install. Bring back customers with one tap on WhatsApp.',
-    url: 'https://reva.in',
-    siteName: 'Reva',
+    url: 'https://siplo.in',
+    siteName: 'Siplo',
     locale: 'en_IN',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Reva — Digital Loyalty Card & WhatsApp Customer Win-Back for Cafés',
+    title: 'Siplo — Digital Loyalty Card & WhatsApp Customer Win-Back for Cafés',
     description:
       'Digital stamp cards with one-tap WhatsApp comeback messages for cafés and restaurants.',
   },

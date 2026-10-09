@@ -518,7 +518,7 @@ function LoginContent() {
 
     if (role === 'customer') {
       try {
-        const origin = typeof window !== 'undefined' ? window.location.origin : 'https://reva.in';
+        const origin = typeof window !== 'undefined' ? window.location.origin : 'https://siplo.in';
         const { error } = await signInWithGoogle(`${origin}/auth/callback?role=customer&next=/c`);
         if (error) {
           if (
@@ -543,7 +543,7 @@ function LoginContent() {
 
     // Business Owner Google SSO
     try {
-      const origin = typeof window !== 'undefined' ? window.location.origin : 'https://reva.in';
+      const origin = typeof window !== 'undefined' ? window.location.origin : 'https://siplo.in';
       const nextParam = mode === 'register' ? '/dashboard?setup=true&new=true' : '/dashboard';
       const { error } = await signInWithGoogle(`${origin}/auth/callback?role=business&next=${encodeURIComponent(nextParam)}`);
       if (error) {
@@ -616,7 +616,7 @@ function LoginContent() {
             </svg>
           </div>
           <div className="flex items-baseline gap-1">
-            <span className="font-display text-xl font-bold tracking-tight text-[#0F172A]">Reva</span>
+            <span className="font-display text-xl font-bold tracking-tight text-[#0F172A]">Siplo</span>
             <span className="text-slate-400 font-display font-medium text-base">.in</span>
           </div>
         </Link>
@@ -1171,7 +1171,7 @@ function LoginContent() {
 
         {/* Terms Disclaimer */}
         <p className="mt-6 text-[11px] text-slate-400 text-center leading-relaxed max-w-[340px] font-normal">
-          By continuing, you acknowledge that you agree to Reva&apos;s{' '}
+          By continuing, you acknowledge that you agree to Siplo&apos;s{' '}
           <Link href="/" className="underline text-slate-500 hover:text-slate-800">
             Terms &amp; Conditions
           </Link>{' '}

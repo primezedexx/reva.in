@@ -1902,7 +1902,7 @@ function CustomerWalletCardContent() {
                   const storePhone = business.phone || business.reward_rule?.phone || '+91 98765 43210';
                   const cleanPhone = storePhone.replace(/\D/g, '');
                   const waNumber = cleanPhone.startsWith('91') ? cleanPhone : cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
-                  const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(`Hi ${business.name}, I'm a Reva loyalty pass member!`)}`;
+                  const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(`Hi ${business.name}, I'm a Siplo loyalty pass member!`)}`;
                   const googleReview = business.google_review_url || business.reward_rule?.google_review_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(business.name + ' ' + fullAddress)}`;
                   const instagramUrl = business.instagram_url || business.reward_rule?.instagram_url || `https://instagram.com/${business.slug.replace(/[^a-zA-Z0-9]/g, '')}`;
                   const mapsUrl = business.maps_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(business.name + ' ' + fullAddress)}`;
@@ -2237,7 +2237,7 @@ function CustomerWalletCardContent() {
                 <div className="text-right">
                   <div className="text-[10px] text-slate-400">Registered Phone / ID</div>
                   <div className="font-mono font-bold text-amber-300">
-                    {customer?.phone || (membership?.id ? membership.id.slice(0, 10).toUpperCase() : 'PASS-REVA')}
+                    {customer?.phone || (membership?.id ? membership.id.slice(0, 10).toUpperCase() : 'PASS-SIPLO')}
                   </div>
                 </div>
               </div>

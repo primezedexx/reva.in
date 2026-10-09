@@ -1,7 +1,7 @@
 'use client';
 
 // ============================================================================
-// REVA (reva.in) — Roco.bank-Style Loyalty Landing Page
+// SIPLO (siplo.in) — Roco.bank-Style Loyalty Landing Page
 // Clean background (pure #FFFFFF, no gradients), Cascading Diagonal 3D Loyalty Cards,
 // Full interactive conveyor physics, 3D mouse parallax, auto-cycle engine,
 // Staggered floating regular member pills, Outfit + Plus Jakarta Sans typography.
@@ -75,7 +75,7 @@ export default function LandingPage() {
         name: 'Do I need a POS integration or new hardware?',
         acceptedAnswer: {
           '@type': 'Answer',
-          text: 'No. Reva works alone with counter QR stands. Guests scan with their phone camera. Staff can add stamps from any phone, iPad or POS browser. You do not need to change your POS.',
+          text: 'No. Siplo works alone with counter QR stands. Guests scan with their phone camera. Staff can add stamps from any phone, iPad or POS browser. You do not need to change your POS.',
         },
       },
       {
@@ -83,7 +83,7 @@ export default function LandingPage() {
         name: "What if I don't have a WhatsApp Business account?",
         acceptedAnswer: {
           '@type': 'Answer',
-          text: 'No. Normal WhatsApp works. Reva prepares the message and you tap send. You do not need to register developer accounts.',
+          text: 'No. Normal WhatsApp works. Siplo prepares the message and you tap send. You do not need to register developer accounts.',
         },
       },
       {
@@ -317,7 +317,7 @@ export default function LandingPage() {
               </svg>
             </div>
             <div className="flex items-baseline gap-0.5 sm:gap-1">
-              <span className="font-display text-xl sm:text-2xl font-bold tracking-tight text-[#0F172A]">Reva</span>
+              <span className="font-display text-xl sm:text-2xl font-bold tracking-tight text-[#0F172A]">Siplo</span>
               <span className="text-slate-400 font-display font-medium text-base sm:text-lg">.in</span>
             </div>
           </Link>
@@ -404,7 +404,7 @@ export default function LandingPage() {
 
             {/* 3. SUBHEAD PARAGRAPH - Delay 0.45s */}
             <p className="hero-anim-subhead font-body text-xs sm:text-sm text-slate-600 leading-relaxed max-w-lg font-normal">
-              Reva gives your customers a digital stamp card with no app to install. You see who stopped visiting and bring them back with one tap on WhatsApp. Made for cafés, salons, retail, gyms, and local businesses.
+              Siplo gives your customers a digital stamp card with no app to install. You see who stopped visiting and bring them back with one tap on WhatsApp. Made for cafés, salons, retail, gyms, and local businesses.
             </p>
 
             {/* 4. CTA BUTTONS */}
@@ -488,7 +488,7 @@ export default function LandingPage() {
                           </div>
                           <div>
                             <div className="flex items-center gap-0.5 sm:gap-1 font-display font-bold text-[9px] xs:text-[10px] sm:text-xs leading-tight">
-                              <span>Reva</span>
+                              <span>Siplo</span>
                               <span className="text-slate-400 font-medium">.in</span>
                               <span className="text-[5px] xs:text-[6px] sm:text-[7px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-0.5 sm:px-1 py-0.1 rounded-full font-bold ml-0.5">
                                 Pro
@@ -738,7 +738,7 @@ export default function LandingPage() {
                     {/* Bottom Safari Bar */}
                     <div className="bg-slate-100 px-2 sm:px-3 py-0.5 sm:py-1 flex items-center justify-between text-[6.5px] xs:text-[7px] sm:text-[8px] text-slate-500 border-t border-slate-200">
                       <span>‹</span>
-                      <span className="font-mono text-[6.5px] xs:text-[7px] sm:text-[8px] text-slate-600 font-medium">reva.in</span>
+                      <span className="font-mono text-[6.5px] xs:text-[7px] sm:text-[8px] text-slate-600 font-medium">siplo.in</span>
                       <span>…</span>
                     </div>
                   </div>
@@ -920,7 +920,7 @@ export default function LandingPage() {
               <div className="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-sm">
                 03
               </div>
-              <h3 className="font-display font-bold text-lg sm:text-xl text-[#0F172A]">Reva is simple</h3>
+              <h3 className="font-display font-bold text-lg sm:text-xl text-[#0F172A]">Siplo is simple</h3>
               <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-body">
                 <b>Customer scans a QR in 3 seconds</b> and the pass saves in their phone browser or Apple Wallet. When they stop visiting, you send a WhatsApp message.
               </p>
@@ -938,10 +938,10 @@ export default function LandingPage() {
             <span>3 SIMPLE STEPS</span>
           </div>
           <h2 className="font-display font-bold text-2xl sm:text-5xl text-[#0F172A] tracking-tight">
-            How Reva works in 3 steps
+            How Siplo works in 3 steps
           </h2>
           <p className="text-sm sm:text-base text-slate-600 max-w-xl mx-auto font-body">
-            Easy for guests and easy for staff. Reva turns one-time visitors into weekly regulars without changing how your cashier works.
+            Easy for guests and easy for staff. Siplo turns one-time visitors into weekly regulars without changing how your cashier works.
           </p>
         </div>
 
@@ -983,7 +983,7 @@ export default function LandingPage() {
                 <span className="text-xs font-mono font-bold text-slate-400">02</span>
               </div>
               <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-body">
-                Reva tracks how often each customer visits. For example, Aarav comes every 3-4 days and Priya comes every week. Reva waits until a customer has visited at least twice.
+                Siplo tracks how often each customer visits. For example, Aarav comes every 3-4 days and Priya comes every week. Siplo waits until a customer has visited at least twice.
               </p>
             </div>
           </div>
@@ -1004,7 +1004,7 @@ export default function LandingPage() {
                 <span className="text-xs font-mono font-bold text-slate-400">03</span>
               </div>
               <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-body">
-                When a customer is late for their usual visit, Reva shows you their name and a ready-made WhatsApp message with a link back to their pass. You just tap send.
+                When a customer is late for their usual visit, Siplo shows you their name and a ready-made WhatsApp message with a link back to their pass. You just tap send.
               </p>
             </div>
           </div>
@@ -1103,7 +1103,7 @@ export default function LandingPage() {
                 </div>
                 <div>
                   <span className="text-slate-400 block text-[9px] sm:text-[10px]">ESTIMATED RETURN</span>
-                  <span className="text-sm sm:text-lg font-bold text-emerald-400">{calculatedROI.roiMultiplier}× on Reva</span>
+                  <span className="text-sm sm:text-lg font-bold text-emerald-400">{calculatedROI.roiMultiplier}× on Siplo</span>
                 </div>
               </div>
 
@@ -1135,7 +1135,7 @@ export default function LandingPage() {
             </h2>
 
             <p className="text-slate-600 text-xs sm:text-base leading-relaxed max-w-xl font-body">
-              Old paper cards just wait. Reva watches each customer&apos;s visit pattern and tells you who to message before they leave for good.
+              Old paper cards just wait. Siplo watches each customer&apos;s visit pattern and tells you who to message before they leave for good.
             </p>
 
             {/* Dynamic Cadence Math Box */}
@@ -1155,7 +1155,7 @@ export default function LandingPage() {
                 </span>
               </div>
               <p className="text-xs text-slate-600 leading-relaxed font-body">
-                If <b>Aarav</b> usually visits every 3.5 days, Reva flags him on day 5. If <b>Priya</b> visits every 14 days, Reva waits until day 21.
+                If <b>Aarav</b> usually visits every 3.5 days, Siplo flags him on day 5. If <b>Priya</b> visits every 14 days, Siplo waits until day 21.
               </p>
             </div>
 
@@ -1252,7 +1252,7 @@ export default function LandingPage() {
                           Boba &amp; Brew Loyalty Pass
                         </div>
                         <div className="text-[10px] text-emerald-700 font-mono truncate">
-                          reva.in/c/boba-brew?offer=CROISSANT
+                          siplo.in/c/boba-brew?offer=CROISSANT
                         </div>
                       </div>
                       <ExternalLink className="w-3.5 h-3.5 text-slate-400 shrink-0 ml-2" />
@@ -1468,7 +1468,7 @@ export default function LandingPage() {
               Frequently Asked Questions
             </h2>
             <p className="text-xs sm:text-sm text-slate-500 font-body">
-              Clear answers about how Reva works in your store.
+              Clear answers about how Siplo works in your store.
             </p>
           </div>
 
@@ -1476,11 +1476,11 @@ export default function LandingPage() {
             {[
               {
                 q: 'Do I need a POS integration or new hardware?',
-                a: 'No. Reva works alone with counter QR stands. Guests scan with their phone camera. Staff can add stamps from any phone, iPad or POS browser. You do not need to change your POS.',
+                a: 'No. Siplo works alone with counter QR stands. Guests scan with their phone camera. Staff can add stamps from any phone, iPad or POS browser. You do not need to change your POS.',
               },
               {
                 q: 'What if I don\'t have a WhatsApp Business account?',
-                a: 'No. Normal WhatsApp works. Reva prepares the message and you tap send. You do not need to register developer accounts.',
+                a: 'No. Normal WhatsApp works. Siplo prepares the message and you tap send. You do not need to register developer accounts.',
               },
               {
                 q: 'Can customers fake stamps at home?',
@@ -1552,7 +1552,7 @@ export default function LandingPage() {
                 <path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M4.93 19.07L19.07 4.93" />
               </svg>
             </div>
-            <span className="font-display text-base font-bold text-[#0F172A]">reva.in</span>
+            <span className="font-display text-base font-bold text-[#0F172A]">siplo.in</span>
             <span className="text-slate-400 font-normal text-xs ml-1 font-mono">
               — Loyalty for cafés &amp; restaurants
             </span>
@@ -1574,7 +1574,7 @@ export default function LandingPage() {
           </div>
 
           <div className="font-mono text-[11px] text-slate-400">
-            © {new Date().getFullYear()} Reva Technologies. All rights reserved.
+            © {new Date().getFullYear()} Siplo Technologies. All rights reserved.
           </div>
         </div>
       </footer>

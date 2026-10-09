@@ -263,7 +263,7 @@ export default function CameraQrScannerModal({
     const targetSlug = parseStoreFromQr(rawText);
 
     if (!targetSlug) {
-      setErrorMessage(`Unrecognized QR code (${rawText.slice(0, 30)}...). Please point at a Reva QR stand.`);
+      setErrorMessage(`Unrecognized QR code (${rawText.slice(0, 30)}...). Please point at a Siplo QR stand.`);
       setTimeout(() => {
         isProcessingRef.current = false;
         setIsProcessing(false);
@@ -667,7 +667,7 @@ export default function CameraQrScannerModal({
             Scan Counter QR
           </h3>
           <p className="text-xs text-slate-500">
-            Point your camera at the Reva QR stand on the counter
+            Point your camera at the Siplo QR stand on the counter
           </p>
         </div>
 
