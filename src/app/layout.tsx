@@ -28,6 +28,9 @@ export const metadata: Metadata = {
     'stamp card wallet',
     'siplo.in',
   ],
+  verification: {
+    google: '1PrCS0HHgtEYJ10y_M_FMCvvGu22BvaWksgiJq7s4gw',
+  },
   openGraph: {
     title: 'Siplo — Digital Loyalty Card & WhatsApp Customer Win-Back for Cafés',
     description:
