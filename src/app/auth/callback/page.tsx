@@ -167,7 +167,7 @@ function AuthCallbackContent() {
         <h1 className="text-2xl font-bold font-outfit text-white mb-2 tracking-tight">
           {status === 'verifying' && 'Verifying Google Account...'}
           {status === 'syncing' && 'Setting Up Your Profile...'}
-          {status === 'redirecting' && 'Welcome to Reva!'}
+          {status === 'redirecting' && 'Welcome to Siplo!'}
           {status === 'error' && 'Sign In Notice'}
         </h1>
 

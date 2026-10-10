@@ -845,8 +845,99 @@ function OwnerDashboardContent() {
     sound.playClick();
     await signOutUser();
     setAuthUser(null);
-    router.push('/login');
+    router.replace('/login');
   }
+
+  // Prevent accidental logout on browser back button & handle sub-tabs/modals
+  useEffect(() => {
+    try {
+      window.history.pushState({ page: 'dashboard', tab: activeTab }, '', window.location.href);
+    } catch {}
+
+    const handlePopState = () => {
+      // 1. If any modal or dropdown is open, close it first
+      const hasOpenModal =
+        showCustomizationModal ||
+        showPlanModal ||
+        showSetupModal ||
+        isQrStandModalOpen ||
+        showGeneralEditModal ||
+        showHeroBannerEditModal ||
+        showLoyaltyEditModal ||
+        showNotificationModal ||
+        showStandStudioModal ||
+        showPrivacyModal ||
+        showCreateOfferModal ||
+        showEditOfferModal ||
+        showCropPhotoModal ||
+        showEditProfileModal ||
+        showProfilePrivacyModal ||
+        showPhoneVerifyModal ||
+        showUserDropdown;
+
+      if (hasOpenModal) {
+        setShowCustomizationModal(false);
+        setShowPlanModal(false);
+        setShowSetupModal(false);
+        setIsQrStandModalOpen(false);
+        setShowGeneralEditModal(false);
+        setShowHeroBannerEditModal(false);
+        setShowLoyaltyEditModal(false);
+        setShowNotificationModal(false);
+        setShowStandStudioModal(false);
+        setShowPrivacyModal(false);
+        setShowCreateOfferModal(false);
+        setShowEditOfferModal(false);
+        setShowCropPhotoModal(false);
+        setShowEditProfileModal(false);
+        setShowProfilePrivacyModal(false);
+        setShowPhoneVerifyModal(false);
+        setShowUserDropdown(false);
+        try {
+          window.history.pushState({ page: 'dashboard', tab: activeTab }, '', window.location.href);
+        } catch {}
+        return;
+      }
+
+      // 2. If on a sub-tab (reward, stats, profile, settings), go back to home tab
+      if (activeTab !== 'home') {
+        setActiveTab('home');
+        try {
+          window.history.pushState({ page: 'dashboard', tab: 'home' }, '', window.location.href);
+        } catch {}
+        return;
+      }
+
+      // 3. If already on home tab, stay safely on dashboard home
+      try {
+        window.history.pushState({ page: 'dashboard', tab: 'home' }, '', window.location.href);
+      } catch {}
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [
+    activeTab,
+    showCustomizationModal,
+    showPlanModal,
+    showSetupModal,
+    isQrStandModalOpen,
+    showGeneralEditModal,
+    showHeroBannerEditModal,
+    showLoyaltyEditModal,
+    showNotificationModal,
+    showStandStudioModal,
+    showPrivacyModal,
+    showCreateOfferModal,
+    showEditOfferModal,
+    showCropPhotoModal,
+    showEditProfileModal,
+    showProfilePrivacyModal,
+    showPhoneVerifyModal,
+    showUserDropdown,
+  ]);
 
   // 2. Trigger Win-Back Automation Live
   async function handleRunWinbackEngine() {
@@ -2137,7 +2228,16 @@ function OwnerDashboardContent() {
         <div className="max-w-7xl w-full mx-auto px-4 sm:px-10 h-16 sm:h-18 flex items-center justify-between gap-2 sm:gap-4">
           <div className="flex items-center gap-2 sm:gap-6 min-w-0">
             {/* Logo */}
-            <Link href="/" className="flex items-center gap-2 sm:gap-2.5 group shrink-0">
+            <Link
+              href="/dashboard"
+              onClick={(e) => {
+                e.preventDefault();
+                setActiveTab('home');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              className="flex items-center gap-2 sm:gap-2.5 group shrink-0 cursor-pointer"
+              title="Dashboard Home"
+            >
               <div className="w-7 h-7 flex items-center justify-center text-slate-900 group-hover:rotate-45 transition-transform duration-500">
                 <svg viewBox="0 0 24 24" className="w-6 h-6 fill-none stroke-current stroke-[2.2]">
                   <path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M4.93 19.07L19.07 4.93" />

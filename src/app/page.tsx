@@ -49,6 +49,7 @@ import {
 } from 'lucide-react';
 import Image from 'next/image';
 import { sound } from '@/lib/sound';
+import { supabase } from '@/lib/supabase';
 
 export default function LandingPage() {
   const router = useRouter();
@@ -64,6 +65,16 @@ export default function LandingPage() {
   const [isAutoPlaying, setIsAutoPlaying] = useState<boolean>(true);
   const [isHoveringDeck, setIsHoveringDeck] = useState<boolean>(false);
   const [mobileHeroScreen, setMobileHeroScreen] = useState<'pass' | 'qr' | 'reward'>('pass');
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
+
+  // Check if merchant has an active session
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setIsLoggedIn(true);
+      }
+    });
+  }, []);
 
   // FAQ Schema for SEO (JSON-LD)
   const faqSchema = {
@@ -310,7 +321,7 @@ export default function LandingPage() {
       <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-100 transition-all">
         <div className="max-w-7xl w-full mx-auto px-4 sm:px-10 h-16 sm:h-20 flex items-center justify-between">
           {/* Logo with Stylized Geometric Asterisk Mark */}
-          <Link href="/" className="flex items-center gap-2.5 sm:gap-3 group">
+          <Link href={isLoggedIn ? "/dashboard" : "/"} className="flex items-center gap-2.5 sm:gap-3 group" title={isLoggedIn ? "Siplo Dashboard" : "Siplo.in"}>
             <div className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center text-slate-900 group-hover:rotate-45 transition-transform duration-500">
               <svg viewBox="0 0 24 24" className="w-6 h-6 sm:w-7 sm:h-7 fill-none stroke-current stroke-[2.2]">
                 <path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M4.93 19.07L19.07 4.93" />
@@ -343,20 +354,32 @@ export default function LandingPage() {
 
           {/* Right Action Buttons */}
           <div className="flex items-center gap-2 sm:gap-3">
-            <Link
-              href="/login"
-              className="text-xs sm:text-sm font-semibold text-slate-700 hover:text-[#0F172A] px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full hover:bg-slate-100 transition-all cursor-pointer"
-            >
-              Log in
-            </Link>
+            {isLoggedIn ? (
+              <Link
+                href="/dashboard"
+                className="text-xs sm:text-sm font-semibold px-4 sm:px-5 py-1.5 sm:py-2 rounded-full bg-[#0F172A] text-white hover:bg-black transition-all shadow-xs flex items-center gap-1 sm:gap-1.5 cursor-pointer active:scale-98"
+              >
+                <span>Go to Dashboard</span>
+                <ArrowRight className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+              </Link>
+            ) : (
+              <>
+                <Link
+                  href="/login"
+                  className="text-xs sm:text-sm font-semibold text-slate-700 hover:text-[#0F172A] px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full hover:bg-slate-100 transition-all cursor-pointer"
+                >
+                  Log in
+                </Link>
 
-            <Link
-              href="/login?mode=register"
-              className="text-xs sm:text-sm font-semibold px-4 sm:px-5 py-1.5 sm:py-2 rounded-full bg-[#0F172A] text-white hover:bg-black transition-all shadow-xs flex items-center gap-1 sm:gap-1.5 cursor-pointer active:scale-98"
-            >
-              <span>Register Store</span>
-              <ArrowRight className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-            </Link>
+                <Link
+                  href="/login?mode=register"
+                  className="text-xs sm:text-sm font-semibold px-4 sm:px-5 py-1.5 sm:py-2 rounded-full bg-[#0F172A] text-white hover:bg-black transition-all shadow-xs flex items-center gap-1 sm:gap-1.5 cursor-pointer active:scale-98"
+                >
+                  <span>Register Store</span>
+                  <ArrowRight className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -410,10 +433,10 @@ export default function LandingPage() {
             {/* 4. CTA BUTTONS */}
             <div className="hero-anim-cta flex flex-col items-start gap-2.5 sm:gap-3 pt-1">
               <Link
-                href="/login?mode=register&trial=true"
+                href={isLoggedIn ? "/dashboard" : "/login?mode=register&trial=true"}
                 className="px-6 sm:px-7 py-3 sm:py-3.5 rounded-full bg-[#0F172A] hover:bg-black text-white text-xs sm:text-sm font-semibold tracking-wider transition-all shadow-md flex items-center gap-2 cursor-pointer uppercase hover:translate-y-[-1px]"
               >
-                <span>GET STARTED</span>
+                <span>{isLoggedIn ? 'OPEN DASHBOARD' : 'GET STARTED'}</span>
                 <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </Link>
 

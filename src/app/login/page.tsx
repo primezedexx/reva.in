@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 import { sound } from '@/lib/sound';
 import {
+  supabase,
   signInWithEmail,
   signInWithGoogle,
   resetPassword,
@@ -99,6 +100,23 @@ function LoginContent() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
+    // If user is already authenticated, automatically redirect to dashboard or pass portal
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        const next = searchParams.get('next');
+        if (next) {
+          router.replace(next);
+        } else {
+          const urlRole = searchParams.get('role');
+          if (urlRole === 'customer') {
+            router.replace('/c');
+          } else {
+            router.replace('/dashboard');
+          }
+        }
+      }
+    });
+
     const urlRole = searchParams.get('role');
     if (urlRole === 'customer') {
       setRole('customer');
@@ -274,7 +292,7 @@ function LoginContent() {
 
         setSuccessMessage('✓ Verified with Firebase SMS! Opening your passes...');
         setTimeout(() => {
-          router.push('/c');
+          router.replace('/c');
         }, 600);
         return;
       } catch (fbErr: unknown) {
@@ -337,7 +355,7 @@ function LoginContent() {
 
       setSuccessMessage('✓ Welcome back! Loading your passes...');
       setTimeout(() => {
-        router.push('/c');
+        router.replace('/c');
       }, 600);
     } catch (err: unknown) {
       console.error('Customer verification error:', err);
@@ -386,11 +404,11 @@ function LoginContent() {
         sound.playRewardFanfare();
         setSuccessMessage('✓ Opening Aarav Sharma\'s digital passes...');
         setTimeout(() => {
-          router.push('/c');
+          router.replace('/c');
         }, 500);
       }
     } catch {
-      router.push('/c');
+      router.replace('/c');
     } finally {
       setIsOtpLoading(false);
     }
@@ -422,9 +440,9 @@ function LoginContent() {
       if (data?.user || data?.session) {
         sound.playRewardFanfare();
         setSuccessMessage('✓ Welcome back! Loading your dashboard...');
-        router.push('/dashboard');
+        router.replace('/dashboard');
       } else {
-        router.push('/dashboard');
+        router.replace('/dashboard');
       }
     } catch (err: unknown) {
       console.error('Login exception:', err);
@@ -500,7 +518,7 @@ function LoginContent() {
 
       sound.playRewardFanfare();
       setSuccessMessage('🎉 30-Day Free Trial started! Opening your dashboard...');
-      router.push(`/dashboard?businessId=${result.business?.id || ''}&new=true`);
+      router.replace(`/dashboard?businessId=${result.business?.id || ''}&new=true`);
     } catch (err: unknown) {
       console.error('Registration exception:', err);
       setErrorMessage(err instanceof Error ? err.message : 'Registration failed. Please try again.');
@@ -602,7 +620,7 @@ function LoginContent() {
     } catch {
       // fallback
     }
-    router.push('/dashboard');
+    router.replace('/dashboard');
   }
 
   return (

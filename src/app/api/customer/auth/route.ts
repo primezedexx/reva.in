@@ -51,7 +51,7 @@ async function sendSmsOtp(phone: string, code: string): Promise<{ sent: boolean;
       const bodyParams = new URLSearchParams({
         To: phone.startsWith('+') ? phone : `+91${tenDigit}`,
         From: twilioPhone,
-        Body: `Your Reva Loyalty Pass verification code is ${code}. Valid for 5 minutes.`,
+        Body: `Your Siplo Loyalty Pass verification code is ${code}. Valid for 5 minutes.`,
       });
 
       const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`, {

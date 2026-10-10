@@ -257,7 +257,7 @@ function CashierTerminalContent() {
       <header className="w-full bg-[#0F172A] text-white py-3.5 px-4 sm:px-8 sticky top-0 z-40 shadow-md">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <Link href="/" className="flex items-center gap-2 text-white">
+            <Link href="/dashboard" className="flex items-center gap-2 text-white">
               <div className="w-7 h-7 flex items-center justify-center text-amber-400">
                 <svg viewBox="0 0 24 24" className="w-6 h-6 fill-none stroke-current stroke-[2.5]">
                   <path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M4.93 19.07L19.07 4.93" />
