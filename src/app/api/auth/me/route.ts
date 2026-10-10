@@ -26,6 +26,9 @@ export async function GET(req: NextRequest) {
 
     if (owner?.business_id) {
       business = await db.getBusinessById(owner.business_id);
+      if (business && business.owner_id !== user.id) {
+        business = null;
+      }
     }
     if (!business) {
       business = await db.getBusinessByOwnerId(user.id);

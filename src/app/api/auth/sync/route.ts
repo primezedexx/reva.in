@@ -21,6 +21,10 @@ export async function POST(req: NextRequest) {
 
     if (owner?.business_id) {
       business = await db.getBusinessById(owner.business_id);
+      if (business && business.owner_id !== userId) {
+        console.warn(`[SECURITY] Cross-account leak prevented in sync: Business ${business.id} belongs to ${business.owner_id}, not user ${userId}`);
+        business = null;
+      }
     }
 
     if (!business) {

@@ -791,8 +791,11 @@ function OwnerDashboardContent() {
       isInitializing = true;
 
       if (!user) {
-        // Instant Direct Bypass: Load business dashboard directly for seamless testing
-        await loadDashboardData(urlBusinessId || undefined);
+        if (urlBusinessId) {
+          await loadDashboardData(urlBusinessId);
+        } else {
+          router.replace('/login?mode=login');
+        }
         isInitializing = false;
         return;
       }
@@ -801,6 +804,20 @@ function OwnerDashboardContent() {
         email: user.email,
         id: user.id,
       });
+
+      // Evict any stale cache that belonged to a different user account
+      try {
+        const cached = sessionStorage.getItem('reva_cached_dashboard');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed.business && parsed.business.owner_id && parsed.business.owner_id !== user.id) {
+            sessionStorage.removeItem('reva_cached_dashboard');
+            sessionStorage.removeItem('reva_cached_business_id');
+            setSelectedBusiness(null);
+            setMetrics(null);
+          }
+        }
+      } catch {}
 
       if (isMounted) {
         await loadDashboardData(urlBusinessId || undefined, user.id);
@@ -812,7 +829,6 @@ function OwnerDashboardContent() {
       if (session?.user) {
         initSession(session.user);
       } else {
-        // Directly load dashboard
         initSession(null);
       }
     });
@@ -822,13 +838,20 @@ function OwnerDashboardContent() {
     } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
         if (session?.user) {
+          try {
+            sessionStorage.removeItem('reva_cached_dashboard');
+            sessionStorage.removeItem('reva_cached_business_id');
+          } catch {}
           initSession(session.user);
         }
       } else if (event === 'SIGNED_OUT') {
         try {
           sessionStorage.removeItem('reva_cached_dashboard');
+          sessionStorage.removeItem('reva_cached_business_id');
         } catch {}
         setAuthUser(null);
+        setSelectedBusiness(null);
+        setMetrics(null);
         if (!urlBusinessId) {
           router.replace('/login?mode=login');
         }

@@ -23,14 +23,20 @@ export async function GET(req: NextRequest) {
         db.getOwnerByUserId(userId),
         db.getBusinessesByOwnerId(userId),
       ]);
-      userBusinesses = initialUserBusinesses || [];
+      // Strict isolation: only businesses whose owner_id matches this authenticated user
+      userBusinesses = (initialUserBusinesses || []).filter((b) => b.owner_id === userId);
 
-      // If user has an owner profile with a linked business_id, ensure it is included
+      // If user has an owner profile with a linked business_id, verify that this user actually owns it!
       if (owner?.business_id) {
-        if (!userBusinesses.some((b) => b.id === owner.business_id)) {
+        const matchesOwnership = userBusinesses.some((b) => b.id === owner.business_id);
+        if (!matchesOwnership) {
           const linkedBiz = await db.getBusinessById(owner.business_id);
-          if (linkedBiz && !userBusinesses.some((b) => b.id === linkedBiz.id)) {
+          if (linkedBiz && linkedBiz.owner_id === userId) {
             userBusinesses.unshift(linkedBiz);
+          } else if (linkedBiz && linkedBiz.owner_id !== userId) {
+            console.warn(`[SECURITY] Prevented cross-account access: Business ${owner.business_id} belongs to ${linkedBiz.owner_id}, not ${userId}`);
+            // Fix mismatched owner profile
+            await db.updateOwnerBusinessId(userId, userBusinesses[0]?.id || '').catch(() => {});
           }
         }
       }
