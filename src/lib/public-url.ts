@@ -21,16 +21,16 @@ export function getPublicOrigin(): string {
       hostname.startsWith('10.') ||
       hostname.endsWith('.local')
     ) {
-      return 'https://revain-delta.vercel.app';
+      return 'https://siplo.vercel.app';
     }
 
-    // reva.in is not yet custom-routed to this deployment
-    if (hostname === 'reva.in' || hostname === 'www.reva.in') {
-      return 'https://revain-delta.vercel.app';
+    // Legacy unrouted hostnames fallback to live siplo url
+    if (hostname === 'reva.in' || hostname === 'www.reva.in' || hostname === 'revain-delta.vercel.app') {
+      return 'https://siplo.vercel.app';
     }
 
     return window.location.origin;
   }
 
-  return 'https://revain-delta.vercel.app';
+  return 'https://siplo.vercel.app';
 }

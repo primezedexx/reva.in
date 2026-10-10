@@ -174,7 +174,7 @@ export default function CameraQrScannerModal({
   const parseStoreFromQr = (rawText: string): string | null => {
     const trimmed = rawText.trim();
 
-    // Pattern 1: URL path like https://reva.in/c/boba-brew or https://revain-delta.vercel.app/c/boba-brew
+    // Pattern 1: URL path like https://siplo.in/c/boba-brew or https://siplo.vercel.app/c/boba-brew
     const urlMatch = trimmed.match(/\/c\/([a-zA-Z0-9_-]+)/);
     if (urlMatch && urlMatch[1]) {
       return urlMatch[1].toLowerCase();
