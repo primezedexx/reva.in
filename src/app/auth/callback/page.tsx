@@ -3,6 +3,7 @@
 // ============================================================================
 // REVA (reva.in) — Client-Side OAuth Callback Handler (/auth/callback)
 // Exchanges PKCE tokens in browser localStorage & syncs profile seamlessly
+// Strict persona separation: Customers go to /c, Store Owners go to /dashboard
 // ============================================================================
 
 import React, { useEffect, useState, Suspense } from 'react';
@@ -21,8 +22,24 @@ function AuthCallbackContent() {
 
     async function handleAuth() {
       try {
-        const role = searchParams.get('role') || 'business';
-        const next = searchParams.get('next') || (role === 'customer' ? '/c' : '/dashboard');
+        // Priority 1: Check URL query parameter (if preserved by provider)
+        const urlRole = searchParams.get('role');
+        const urlNext = searchParams.get('next');
+
+        // Priority 2: Check pre-OAuth persisted intent in localStorage & cookies
+        let savedIntentRole: string | null = null;
+        let savedIntentNext: string | null = null;
+        if (typeof window !== 'undefined') {
+          savedIntentRole = localStorage.getItem('reva_auth_intended_role');
+          savedIntentNext = localStorage.getItem('reva_auth_intended_next');
+        }
+        if (!savedIntentRole && typeof document !== 'undefined') {
+          const match = document.cookie.match(/(?:^|;\s*)reva_auth_intended_role=([^;]+)/);
+          if (match) savedIntentRole = decodeURIComponent(match[1]);
+        }
+
+        const initialRole = urlRole || savedIntentRole || '';
+        const initialNext = urlNext || savedIntentNext || '';
 
         // 1. Check for ?code= parameter (PKCE flow)
         const code = searchParams.get('code');
@@ -46,7 +63,7 @@ function AuthCallbackContent() {
         }
 
         if (session?.user) {
-          await processUser(session.user, role, next);
+          await processUser(session.user, initialRole, initialNext);
           return;
         }
 
@@ -54,18 +71,18 @@ function AuthCallbackContent() {
         const { data: authListener } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
           if (currentSession?.user && isMounted) {
             authListener.subscription.unsubscribe();
-            await processUser(currentSession.user, role, next);
+            await processUser(currentSession.user, initialRole, initialNext);
           }
         });
 
-        // 4. Final timeout guard: Redirect after 4 seconds if no session resolved
+        // 4. Final timeout guard: Redirect after 3.5 seconds if no session resolved
         setTimeout(async () => {
           if (isMounted) {
             const { data: fallbackData } = await supabase.auth.getSession();
             if (fallbackData?.session?.user) {
-              await processUser(fallbackData.session.user, role, next);
+              await processUser(fallbackData.session.user, initialRole, initialNext);
             } else {
-              router.replace(role === 'customer' ? '/login?role=customer' : '/login');
+              router.replace(initialRole === 'customer' ? '/login?role=customer' : '/login');
             }
           }
         }, 3500);
@@ -80,7 +97,7 @@ function AuthCallbackContent() {
       }
     }
 
-    async function processUser(user: any, role: string, next: string) {
+    async function processUser(user: any, requestedRole: string, requestedNext: string) {
       if (!isMounted) return;
       setStatus('syncing');
 
@@ -95,32 +112,98 @@ function AuthCallbackContent() {
         user.user_metadata?.picture ||
         undefined;
 
-      if (role === 'customer') {
-        const userEmail = user.email?.trim().toLowerCase() || undefined;
-        const userPhone = user.phone?.trim() || undefined;
-        const phoneOrId = userPhone || userEmail || user.id;
+      let effectiveRole = requestedRole;
+
+      // If role was not explicitly captured in URL or storage, resolve against database
+      if (!effectiveRole && user?.id) {
+        try {
+          const roleRes = await fetch(
+            `/api/auth/role?userId=${encodeURIComponent(user.id)}&email=${encodeURIComponent(user.email || '')}`
+          );
+          if (roleRes.ok) {
+            const roleData = await roleRes.json();
+            if (roleData.role) {
+              effectiveRole = roleData.role;
+            }
+          }
+        } catch {}
+      }
+
+      // Safe default: If totally unknown, ALWAYS default to 'customer', NEVER 'business'!
+      // This strictly protects against accidental merchant provisioning
+      if (!effectiveRole) {
+        effectiveRole = 'customer';
+      }
+
+      const effectiveNext =
+        requestedNext || (effectiveRole === 'customer' ? '/c' : '/dashboard');
+
+      // Clear temporary pre-auth intent
+      try {
+        localStorage.removeItem('reva_auth_intended_role');
+        localStorage.removeItem('reva_auth_intended_next');
+        document.cookie = 'reva_auth_intended_role=; path=/; max-age=0';
+      } catch {}
+
+      // Persist active session role
+      try {
+        localStorage.setItem('reva_auth_role', effectiveRole);
+        document.cookie = `reva_auth_role=${effectiveRole}; path=/; max-age=2592000; SameSite=Lax`;
+      } catch {}
+
+      if (effectiveRole === 'customer') {
+        const userEmail = user.email?.trim().toLowerCase() || '';
+        const userPhone = user.phone?.trim() || '';
+
+        // Store customer credentials in localStorage & cookies for /c portal
+        try {
+          if (userEmail) {
+            localStorage.setItem('reva_customer_email', userEmail);
+            document.cookie = `reva_customer_email=${encodeURIComponent(userEmail)}; path=/; max-age=2592000; SameSite=Lax`;
+          }
+          if (userPhone) {
+            localStorage.setItem('reva_customer_phone', userPhone);
+            document.cookie = `reva_customer_phone=${encodeURIComponent(userPhone)}; path=/; max-age=2592000; SameSite=Lax`;
+          }
+          if (rawName) {
+            localStorage.setItem('reva_customer_name', rawName);
+          }
+          if (avatarUrl) {
+            localStorage.setItem('reva_customer_avatar', avatarUrl);
+          }
+          if (user.id) {
+            localStorage.setItem('reva_customer_auth_user_id', user.id);
+          }
+          // Remove any merchant dashboard cache from customer browser
+          sessionStorage.removeItem('reva_cached_dashboard');
+          sessionStorage.removeItem('reva_cached_business_id');
+        } catch {}
 
         try {
-          await fetch('/api/customer/auth', {
+          const custRes = await fetch('/api/customer/auth', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              action: 'verify_otp',
-              phone: phoneOrId,
+              action: 'google_login',
+              email: userEmail,
+              phone: userPhone || undefined,
               name: rawName,
-              avatar_url: avatarUrl,
+              avatarUrl: avatarUrl,
               auth_provider: 'google',
               auth_user_id: user.id,
-              email: userEmail,
             }),
           });
+          const custData = await custRes.json();
+          if (custData?.passes && Array.isArray(custData.passes)) {
+            localStorage.setItem('reva_customer_passes', JSON.stringify(custData.passes));
+          }
         } catch (e) {
           console.error('Customer sync error:', e);
         }
 
         if (isMounted) {
           setStatus('redirecting');
-          router.replace(next || '/c');
+          router.replace(effectiveNext || '/c');
         }
       } else {
         // Business owner sync
@@ -132,6 +215,7 @@ function AuthCallbackContent() {
               userId: user.id,
               email: user.email,
               name: rawName,
+              role: 'business',
             }),
           });
           const syncData = await syncRes.json();
@@ -144,7 +228,7 @@ function AuthCallbackContent() {
 
         if (isMounted) {
           setStatus('redirecting');
-          router.replace(next || '/dashboard');
+          router.replace(effectiveNext || '/dashboard');
         }
       }
     }
@@ -173,7 +257,7 @@ function AuthCallbackContent() {
 
         <p className="text-slate-400 text-sm mb-6">
           {status === 'verifying' && 'Securely confirming authentication with Supabase...'}
-          {status === 'syncing' && 'Syncing your loyalty passes and dashboard...'}
+          {status === 'syncing' && 'Syncing your loyalty passes and account...'}
           {status === 'redirecting' && 'Opening your application now...'}
           {status === 'error' && (errorMessage || 'Redirecting back to login...')}
         </p>

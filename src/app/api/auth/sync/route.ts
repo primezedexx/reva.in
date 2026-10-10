@@ -9,10 +9,14 @@ import { db } from '@/lib/db';
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId, email, name } = await req.json();
+    const { userId, email, name, role = 'business' } = await req.json();
 
     if (!userId || !email) {
       return NextResponse.json({ error: 'Missing userId or email' }, { status: 400 });
+    }
+
+    if (role === 'customer') {
+      return NextResponse.json({ error: 'Customer accounts cannot be synced as merchant owners' }, { status: 400 });
     }
 
     // 1. Check if owner already exists

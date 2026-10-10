@@ -58,8 +58,15 @@ function LoginContent() {
   
   // Top Level Role: 'customer' | 'business'
   const roleParam = searchParams.get('role');
-  const initialRole = roleParam === 'business' ? 'business' : 'customer';
-  const [role, setRole] = useState<'customer' | 'business'>(initialRole);
+  const [role, setRole] = useState<'customer' | 'business'>(() => {
+    if (roleParam === 'business') return 'business';
+    if (roleParam === 'customer') return 'customer';
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('reva_auth_intended_role');
+      if (stored === 'business' || stored === 'customer') return stored;
+    }
+    return 'customer';
+  });
 
   // Business Mode: 'login' | 'register' | 'forgot'
   const initialMode = searchParams.get('mode') === 'register' ? 'register' : 'login';
@@ -100,20 +107,47 @@ function LoginContent() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    // If user is already authenticated, automatically redirect to dashboard or pass portal
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    // If user is already authenticated, intelligently redirect to dashboard or customer passes
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session?.user) {
         const next = searchParams.get('next');
         if (next) {
           router.replace(next);
-        } else {
-          const urlRole = searchParams.get('role');
-          if (urlRole === 'customer') {
-            router.replace('/c');
-          } else {
-            router.replace('/dashboard');
-          }
+          return;
         }
+
+        const urlRole = searchParams.get('role');
+        const localIntended = typeof window !== 'undefined' ? localStorage.getItem('reva_auth_intended_role') : null;
+        const activeRole = typeof window !== 'undefined' ? localStorage.getItem('reva_auth_role') : null;
+
+        if (urlRole === 'customer' || localIntended === 'customer' || activeRole === 'customer') {
+          router.replace('/c');
+          return;
+        }
+
+        if (urlRole === 'business' || localIntended === 'business' || activeRole === 'business') {
+          router.replace('/dashboard');
+          return;
+        }
+
+        // Check user persona via server endpoint
+        try {
+          const res = await fetch(
+            `/api/auth/role?userId=${encodeURIComponent(session.user.id)}&email=${encodeURIComponent(session.user.email || '')}`
+          );
+          if (res.ok) {
+            const data = await res.json();
+            if (data.role === 'customer') {
+              router.replace('/c');
+              return;
+            } else if (data.role === 'business') {
+              router.replace('/dashboard');
+              return;
+            }
+          }
+        } catch {}
+
+        router.replace(role === 'customer' ? '/c' : '/dashboard');
       }
     });
 
@@ -143,12 +177,19 @@ function LoginContent() {
     router.prefetch('/c');
   }, [searchParams, router]);
 
-  // Clear messages when role/mode changes
+  // Clear messages when role/mode changes & persist intent across OAuth
   const switchRole = (newRole: 'customer' | 'business') => {
     sound.playClick();
     setRole(newRole);
     setErrorMessage(null);
     setSuccessMessage(null);
+    try {
+      localStorage.setItem('reva_auth_intended_role', newRole);
+      document.cookie = `reva_auth_intended_role=${newRole}; path=/; max-age=3600; SameSite=Lax`;
+      const currentUrl = new URL(window.location.href);
+      currentUrl.searchParams.set('role', newRole);
+      window.history.replaceState(null, '', currentUrl.pathname + currentUrl.search);
+    } catch {}
   };
 
   const switchMode = (newMode: 'login' | 'register' | 'forgot') => {
@@ -534,9 +575,17 @@ function LoginContent() {
     sound.playClick();
     setGoogleLoading(true);
 
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://siplo.in';
+
     if (role === 'customer') {
       try {
-        const origin = typeof window !== 'undefined' ? window.location.origin : 'https://siplo.in';
+        // Firmly persist customer intent in localStorage and cookie before OAuth redirect
+        try {
+          localStorage.setItem('reva_auth_intended_role', 'customer');
+          localStorage.setItem('reva_auth_intended_next', '/c');
+          document.cookie = 'reva_auth_intended_role=customer; path=/; max-age=3600; SameSite=Lax';
+        } catch {}
+
         const { error } = await signInWithGoogle(`${origin}/auth/callback?role=customer&next=/c`);
         if (error) {
           if (
@@ -561,8 +610,14 @@ function LoginContent() {
 
     // Business Owner Google SSO
     try {
-      const origin = typeof window !== 'undefined' ? window.location.origin : 'https://siplo.in';
       const nextParam = mode === 'register' ? '/dashboard?setup=true&new=true' : '/dashboard';
+      // Firmly persist business owner intent in localStorage and cookie before OAuth redirect
+      try {
+        localStorage.setItem('reva_auth_intended_role', 'business');
+        localStorage.setItem('reva_auth_intended_next', nextParam);
+        document.cookie = 'reva_auth_intended_role=business; path=/; max-age=3600; SameSite=Lax';
+      } catch {}
+
       const { error } = await signInWithGoogle(`${origin}/auth/callback?role=business&next=${encodeURIComponent(nextParam)}`);
       if (error) {
         if (

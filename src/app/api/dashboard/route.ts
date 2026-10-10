@@ -56,67 +56,23 @@ export async function GET(req: NextRequest) {
         });
       }
 
-      // If no business exists yet for this authenticated user, auto-provision one!
+      // Security Wall: If this authenticated user has no business, do NOT auto-provision!
+      // This strictly prevents customer accounts from ever being converted into merchant stores.
       if (userBusinesses.length === 0) {
-        const storeName = owner?.name ? `${owner.name}'s Cafe` : 'My Cafe';
-        const baseSlug = storeName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-        const slug = `${baseSlug}-${Math.random().toString(36).substring(2, 6)}`;
-
-        const newBiz = await db.createBusiness({
-          name: storeName,
-          slug: slug,
-          owner_id: userId,
-          brand_color: '#0F172A',
-          is_setup_completed: false,
-          reward_rule: {
-            stamps_needed: 6,
-            reward_title: 'Free Specialty Beverage',
-            reward_desc: 'Any handcrafted drink or signature treat on the house',
-            min_order_for_stamp: 150,
-            theme_config: {
-              is_setup_completed: false,
-            },
-            is_setup_completed: false,
+        return NextResponse.json(
+          {
+            success: false,
+            isOwner: false,
+            error: 'No business store found for this account. If you are a customer, please view your passes at /c.',
+            redirect: '/c',
           },
-          theme_config: {
-            is_setup_completed: false,
-          },
-          avg_spend_per_visit: 250.0,
-          min_order_for_stamp: 150.0,
-          winback_delay_multiplier: 1.5,
-          winback_min_days: 5,
-          winback_offer_text: 'Complimentary Belgian Waffle or treat with your next visit',
-          plan: 'growth',
-          trial_ends_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-          subscription_status: 'trialing',
-          trial_active: true,
-          active_offers: [
-            {
-              id: 'off_1',
-              title: 'Welcome Treat',
-              stamps_needed: 3,
-              badge: '3 Stamps Milestone',
-              desc: 'Earned at 3 stamps on your digital pass',
-              type: 'milestone',
-              icon: 'flame',
-              min_order: 150,
+          {
+            status: 403,
+            headers: {
+              'Cache-Control': 'no-store, no-cache, must-revalidate',
             },
-            {
-              id: 'off_2',
-              title: 'Free Specialty Beverage',
-              stamps_needed: 6,
-              badge: '6 Stamps Grand Reward',
-              desc: 'Any handcrafted drink on the house',
-              type: 'milestone',
-              icon: 'star',
-              min_order: 150,
-            },
-          ],
-        });
-        if (owner && !owner.business_id) {
-          await db.updateOwnerBusinessId(userId, newBiz.id).catch(() => {});
-        }
-        userBusinesses = [newBiz];
+          }
+        );
       }
 
       // If a specific businessId was requested, verify the user actually owns it
