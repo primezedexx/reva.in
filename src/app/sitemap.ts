@@ -4,7 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 export const revalidate = 3600; // revalidate sitemap every hour
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || 'https://siplo.vercel.app').replace(/\/+$/, '');
+  const baseUrl = (process.env.NEXT_PUBLIC_APP_URL || 'https://siplo.vercel.app').trim().replace(/\/+$/, '');
 
   const staticRoutes: MetadataRoute.Sitemap = [
     {
