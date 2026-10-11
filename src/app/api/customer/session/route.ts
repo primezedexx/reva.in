@@ -21,21 +21,31 @@ export async function GET(req: NextRequest) {
     const isIgnoredEmail = email && (email.includes('owner') || email.includes('primezedexx') || email.endsWith('@reva.in'));
     const cleanEmail = email && !isIgnoredEmail ? email.trim().toLowerCase() : '';
     const cleanName = name && name !== 'Valued Guest' && name !== 'Aarav Sharma' ? name.trim() : '';
-    const searchIdentifier = cleanPhone || cleanEmail || userId || cleanName;
+    const searchIdentifier = cleanPhone || cleanEmail || userId;
 
     if (!searchIdentifier) {
       return NextResponse.json({ success: true, passes: [], customer: null });
     }
 
-    // 1. Search for any customer records matching any of the user's identities (phone, email, Google UID, name)
+    // 1. Search for customer records strictly matching unique credentials (phone, email, Google UID)
     const matchedCustomers = await db.findCustomersByAnyIdentity({
       phone: cleanPhone,
       email: cleanEmail,
       userId: userId || undefined,
-      name: cleanName,
     });
 
-    let primaryCustomer = matchedCustomers[0] || null;
+    let primaryCustomer: any = null;
+    if (cleanPhone) {
+      const tenDigit = cleanPhone.replace(/\D/g, '').slice(-10);
+      primaryCustomer = matchedCustomers.find((c) => {
+        if (!c.phone) return false;
+        const d = c.phone.replace(/\D/g, '');
+        return d.endsWith(tenDigit) || c.phone === cleanPhone;
+      }) || null;
+    }
+    if (!primaryCustomer) {
+      primaryCustomer = matchedCustomers[0] || null;
+    }
 
     if (!primaryCustomer) {
       primaryCustomer = await db.createOrGetCustomer(searchIdentifier, cleanName || undefined, undefined, {
@@ -165,10 +175,8 @@ export async function GET(req: NextRequest) {
     }
 
     // 3. Resolve unified customer details (real phone, real email, real name, avatar)
-    const realPhoneCustomer = matchedCustomers.find(
-      (c) => c.phone && !c.phone.includes('@') && c.phone.replace(/\D/g, '').length >= 10
-    );
-    const effectivePhone = realPhoneCustomer?.phone || cleanPhone || '';
+    // If cleanPhone was requested, effectivePhone MUST strictly be cleanPhone / primaryCustomer.phone, NEVER another phone!
+    const effectivePhone = cleanPhone || primaryCustomer?.phone || '';
 
     const realNameCustomer = matchedCustomers.find(
       (c) => c.name && c.name !== 'Valued Guest' && c.name !== 'Aarav Sharma'

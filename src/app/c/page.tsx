@@ -1015,9 +1015,6 @@ function CustomerPortalContent() {
         if (effectiveEmail) {
           params.set('email', effectiveEmail);
         }
-        if (currentName && currentName !== 'Valued Guest' && currentName !== 'Aarav Sharma') {
-          params.set('name', currentName);
-        }
         if (localCodes.length > 0) {
           params.set('voucherCodes', localCodes.join(','));
         }
@@ -1155,8 +1152,12 @@ function CustomerPortalContent() {
 
               // Update Phone: ONLY set if session actually has a valid phone number (10+ digits, no @)
               if (sessionData.phone && sessionData.phone.replace(/\D/g, '').length >= 10 && !sessionData.phone.includes('@')) {
-                setCustomerPhone(sessionData.phone);
-                localStorage.setItem('reva_customer_phone', sessionData.phone);
+                const currentLocalPhone = localStorage.getItem('reva_customer_phone');
+                // NEVER overwrite an active logged-in phone with a different phone number!
+                if (!currentLocalPhone || currentLocalPhone.replace(/\D/g, '').slice(-10) === sessionData.phone.replace(/\D/g, '').slice(-10)) {
+                  setCustomerPhone(sessionData.phone);
+                  localStorage.setItem('reva_customer_phone', sessionData.phone);
+                }
               }
 
               // Update Email: ONLY if legitimate non-admin customer email

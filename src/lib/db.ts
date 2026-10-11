@@ -1327,11 +1327,10 @@ class RevaDatabase {
     userId?: string;
     name?: string;
   }): Promise<Customer[]> {
-    const { phone, email, userId, name } = identities;
+    const { phone, email, userId } = identities;
     const cleanPhone = phone && phone !== '+91 98765 43210' && phone !== '9876543210' ? phone.trim() : '';
     const isIgnoredEmail = email && (email.includes('owner') || email.includes('primezedexx') || email.endsWith('@reva.in'));
     const cleanEmail = email && !isIgnoredEmail ? email.trim().toLowerCase() : '';
-    const cleanName = name && name !== 'Valued Guest' && name !== 'Aarav Sharma' ? name.trim() : '';
 
     const results: Customer[] = [];
     const seenIds = new Set<string>();
@@ -1359,14 +1358,25 @@ class RevaDatabase {
       if (userId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
         orClauses.push(`id.eq.${userId}`);
       }
-      if (cleanName && cleanName.length >= 3) {
-        orClauses.push(`name.ilike.${cleanName}`);
-      }
 
       if (orClauses.length > 0) {
         const { data, error } = await supabaseAdmin.from('customers').select('*').or(orClauses.join(','));
         if (!error && data) {
-          data.forEach((c: any) =>
+          // Sort results so that exact phone matches appear first
+          const sorted = [...data].sort((a: any, b: any) => {
+            if (cleanPhone) {
+              const aDigits = (a.phone || '').replace(/\D/g, '');
+              const bDigits = (b.phone || '').replace(/\D/g, '');
+              const targetDigits = cleanPhone.replace(/\D/g, '').slice(-10);
+              const aMatches = aDigits.endsWith(targetDigits);
+              const bMatches = bDigits.endsWith(targetDigits);
+              if (aMatches && !bMatches) return -1;
+              if (!aMatches && bMatches) return 1;
+            }
+            return 0;
+          });
+
+          sorted.forEach((c: any) =>
             addCust({
               ...c,
               email: c.email || (c.phone?.includes('@') ? c.phone : undefined),
@@ -1390,9 +1400,8 @@ class RevaDatabase {
       const matchesPhone = cleanPhone && (cClean === cleanPhone || (last10.length >= 7 && cLast10 === last10));
       const matchesEmail = cleanEmail && (cClean.toLowerCase() === cleanEmail || c.email?.toLowerCase() === cleanEmail);
       const matchesUser = userId && (c.id === userId || c.auth_user_id === userId);
-      const matchesName = cleanName && cleanName.length >= 3 && c.name?.toLowerCase() === cleanName.toLowerCase();
 
-      if (matchesPhone || matchesEmail || matchesUser || matchesName) {
+      if (matchesPhone || matchesEmail || matchesUser) {
         addCust(c);
       }
     });
