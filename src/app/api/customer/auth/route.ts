@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -78,6 +79,127 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { action = 'verify_otp', phone, otp, name, email, avatarUrl } = body;
+
+    // =========================================================================
+    // 0. ACTION: VERIFIED IN-STORE CUSTOMER LOGIN (Phone + Registered Name)
+    // Strictly checks existing records; NEVER creates accounts online to prevent stamp farming
+    // =========================================================================
+    if (action === 'customer_login') {
+      const cleanPhone = (phone || '').toString().trim().replace(/\s+/g, '');
+      const cleanName = (name || '').toString().trim();
+
+      if (!cleanPhone || cleanPhone.length < 6) {
+        return NextResponse.json(
+          { error: 'Valid mobile number is required.' },
+          { status: 400 }
+        );
+      }
+
+      if (!cleanName || cleanName.length < 2) {
+        return NextResponse.json(
+          { error: 'The credentials do not match.' },
+          { status: 401 }
+        );
+      }
+
+      const digitsOnly = cleanPhone.replace(/\D/g, '');
+      const tenDigit = digitsOnly.length >= 10 ? digitsOnly.slice(-10) : digitsOnly;
+
+      // 1. Look up existing customer by phone in DB
+      let customer = await db.getCustomerByPhone(cleanPhone);
+      if (!customer && tenDigit.length === 10) {
+        customer = await db.getCustomerByPhone(tenDigit);
+        if (!customer) {
+          customer = await db.getCustomerByPhone(`+91${tenDigit}`);
+        }
+        if (!customer) {
+          customer = await db.getCustomerByPhone(`+91 ${tenDigit.slice(0, 5)} ${tenDigit.slice(5)}`);
+        }
+      }
+
+      // Fallback query to Supabase table
+      if (!customer) {
+        try {
+          const { data: supaCust } = await supabaseAdmin
+            .from('customers')
+            .select('*')
+            .or(`phone.eq.${cleanPhone},phone.eq.${tenDigit},phone.ilike.%${tenDigit}%`)
+            .limit(1);
+          if (supaCust && supaCust.length > 0) {
+            customer = supaCust[0];
+          }
+        } catch {}
+      }
+
+      // If customer was never registered in-store, DO NOT create a new account!
+      if (!customer) {
+        return NextResponse.json(
+          { error: 'The credentials do not match.' },
+          { status: 401 }
+        );
+      }
+
+      // 2. Validate Name against customer's registered name
+      const registeredName = (customer.name || '').trim().toLowerCase();
+      const inputName = cleanName.toLowerCase();
+
+      const isNameMatch =
+        registeredName === inputName ||
+        registeredName === 'valued guest' ||
+        registeredName === '' ||
+        registeredName.includes(inputName) ||
+        inputName.includes(registeredName);
+
+      if (!isNameMatch) {
+        return NextResponse.json(
+          { error: 'The credentials do not match.' },
+          { status: 401 }
+        );
+      }
+
+      // If registered name was generic 'Valued Guest', update to their real provided name
+      if (registeredName === 'valued guest' || !customer.name) {
+        try {
+          await supabaseAdmin
+            .from('customers')
+            .update({ name: cleanName })
+            .eq('id', customer.id);
+          customer.name = cleanName;
+        } catch {}
+      }
+
+      // 3. Fetch customer's active memberships across all stores
+      const memberships = await db.getMembershipsByCustomerId(customer.id);
+      const allBusinesses = await db.getBusinesses();
+
+      let passes = memberships.map((m) => {
+        const biz = m.business || allBusinesses.find((b) => b.id === m.business_id);
+        const stampsNeeded = biz?.reward_rule?.stamps_needed || 6;
+        return {
+          slug: biz?.slug || 'boba-brew',
+          name: biz?.name || 'Local Cafe',
+          category: biz?.category || 'Café & Beverage',
+          brandColor: biz?.brand_color || '#0F172A',
+          stamps: m.stamps || 0,
+          totalStamps: stampsNeeded,
+          rewardTitle: biz?.reward_rule?.reward_title || 'Specialty Loyalty Reward',
+          lastVisit: m.last_visit_at ? 'Recently' : 'Just joined',
+          minOrder: biz?.reward_rule?.min_order_for_stamp || biz?.min_order_for_stamp || 150,
+          passId: `REV-${m.id.slice(0, 8).toUpperCase()}`,
+          googleReviewUrl: biz?.google_review_url,
+          address: biz?.address,
+          area: biz?.area,
+        };
+      });
+
+      return NextResponse.json({
+        success: true,
+        customer,
+        memberships,
+        passes,
+        message: 'Logged in successfully! Loading your passes...',
+      });
+    }
 
     // 1. ACTION: REQUEST OTP
     if (action === 'request_otp') {
