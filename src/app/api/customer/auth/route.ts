@@ -86,24 +86,23 @@ export async function POST(req: NextRequest) {
     // =========================================================================
     if (action === 'customer_login') {
       const cleanPhone = (phone || '').toString().trim().replace(/\s+/g, '');
-      const cleanName = (name || '').toString().trim();
+      const digitsOnly = cleanPhone.replace(/\D/g, '');
+      const tenDigit = digitsOnly.length >= 10 ? digitsOnly.slice(-10) : digitsOnly;
 
-      if (!cleanPhone || cleanPhone.length < 6) {
+      if (!digitsOnly || digitsOnly.length < 10) {
         return NextResponse.json(
-          { error: 'Valid mobile number is required.' },
+          { error: 'Valid 10-digit mobile number is required.' },
           { status: 400 }
         );
       }
 
+      const cleanName = (name || '').toString().replace(/[^a-zA-Z\s'.\-]/g, '').trim();
       if (!cleanName || cleanName.length < 2) {
         return NextResponse.json(
           { error: 'The credentials do not match.' },
           { status: 401 }
         );
       }
-
-      const digitsOnly = cleanPhone.replace(/\D/g, '');
-      const tenDigit = digitsOnly.length >= 10 ? digitsOnly.slice(-10) : digitsOnly;
 
       // 1. Look up existing customer by phone in DB
       let customer = await db.getCustomerByPhone(cleanPhone);

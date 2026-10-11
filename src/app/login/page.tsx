@@ -576,13 +576,14 @@ function LoginContent() {
     setErrorMessage(null);
     setSuccessMessage(null);
 
-    const cleanNum = customerPhone.replace(/[^\d]/g, '');
-    if (cleanNum.length < 8) {
-      setErrorMessage('Please enter a valid mobile number.');
+    const cleanNum = customerPhone.replace(/\D/g, '');
+    if (cleanNum.length !== 10) {
+      setErrorMessage('Please enter your 10-digit mobile number.');
       return;
     }
 
-    if (!customerName.trim() || customerName.trim().length < 2) {
+    const cleanName = customerName.replace(/[^a-zA-Z\s'.\-]/g, '').trim();
+    if (!cleanName || cleanName.length < 2) {
       setErrorMessage('The credentials do not match.');
       return;
     }
@@ -596,8 +597,8 @@ function LoginContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'customer_login',
-          phone: customerPhone.trim(),
-          name: customerName.trim(),
+          phone: cleanNum,
+          name: cleanName,
         }),
       });
 
@@ -877,9 +878,16 @@ function LoginContent() {
 
               {/* Mobile Number Field */}
               <div className="space-y-1.5 text-left">
-                <label className="text-[11px] font-mono uppercase tracking-wider font-bold text-slate-500">
-                  Mobile Number
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-mono uppercase tracking-wider font-bold text-slate-500">
+                    Mobile Number (10 Digits)
+                  </label>
+                  {customerPhone.length > 0 && customerPhone.length < 10 && (
+                    <span className="text-[10px] font-mono text-amber-600 font-semibold">
+                      {10 - customerPhone.length} digits left
+                    </span>
+                  )}
+                </div>
                 <div className="flex items-center rounded-2xl border border-slate-200 bg-slate-50/50 focus-within:border-emerald-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-emerald-500/20 transition-all overflow-hidden">
                   <div className="px-3.5 py-3 text-xs font-mono font-bold text-slate-500 border-r border-slate-200 bg-slate-100/60 select-none">
                     +91
@@ -887,18 +895,25 @@ function LoginContent() {
                   <input
                     type="tel"
                     inputMode="numeric"
+                    pattern="[0-9]*"
                     value={customerPhone}
                     onChange={(e) => {
-                      const val = e.target.value.replace(/[^\d\s]/g, '');
-                      setCustomerPhone(val);
+                      const digits = e.target.value.replace(/\D/g, '');
+                      const clean = digits.length > 10 && digits.startsWith('91') ? digits.slice(-10) : digits.slice(0, 10);
+                      setCustomerPhone(clean);
                       if (errorMessage) setErrorMessage(null);
                     }}
-                    placeholder="98765 43210"
-                    maxLength={13}
+                    placeholder="9876543210"
+                    maxLength={10}
                     disabled={isOtpLoading}
-                    className="w-full px-3.5 py-3 bg-transparent text-sm font-mono text-[#0F172A] placeholder:text-slate-400 focus:outline-none"
+                    className="w-full px-3.5 py-3 bg-transparent text-sm font-mono text-[#0F172A] placeholder:text-slate-400 focus:outline-none tracking-wider font-semibold"
                     required
                   />
+                  {customerPhone.length === 10 && (
+                    <div className="pr-3 text-emerald-600 shrink-0">
+                      <Check className="w-4 h-4 stroke-[2.5]" />
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -913,10 +928,13 @@ function LoginContent() {
                     type="text"
                     value={customerName}
                     onChange={(e) => {
-                      setCustomerName(e.target.value);
+                      // Strictly letters, spaces, apostrophes, dots and hyphens — completely strip any numbers
+                      const lettersOnly = e.target.value.replace(/[^a-zA-Z\s'.\-]/g, '');
+                      setCustomerName(lettersOnly);
                       if (errorMessage) setErrorMessage(null);
                     }}
                     placeholder="e.g. Saurabh"
+                    maxLength={50}
                     disabled={isOtpLoading}
                     className="w-full py-3 bg-transparent text-sm text-[#0F172A] placeholder:text-slate-400 focus:outline-none font-medium"
                     required
@@ -927,7 +945,7 @@ function LoginContent() {
               {/* Submit Button */}
               <button
                 type="submit"
-                disabled={isOtpLoading || !customerPhone.trim() || !customerName.trim()}
+                disabled={isOtpLoading || customerPhone.replace(/\D/g, '').length !== 10 || !customerName.replace(/[^a-zA-Z\s'.\-]/g, '').trim()}
                 className="w-full mt-2 py-3.5 px-6 rounded-2xl bg-[#0F172A] hover:bg-black active:scale-[0.99] text-white transition-all flex items-center justify-center gap-2.5 cursor-pointer shadow-md font-display font-semibold text-sm disabled:opacity-50 group"
               >
                 {isOtpLoading ? (
