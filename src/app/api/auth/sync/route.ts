@@ -67,28 +67,7 @@ export async function POST(req: NextRequest) {
         trial_ends_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
         subscription_status: 'trialing',
         trial_active: true,
-        active_offers: [
-          {
-            id: 'off_1',
-            title: 'Welcome Treat',
-            stamps_needed: 3,
-            badge: '3 Stamps Milestone',
-            desc: 'Earned at 3 stamps on your digital pass',
-            type: 'milestone',
-            icon: 'flame',
-            min_order: 150,
-          },
-          {
-            id: 'off_2',
-            title: 'Free Specialty Beverage',
-            stamps_needed: 6,
-            badge: '6 Stamps Grand Reward',
-            desc: 'Any handcrafted drink on the house',
-            type: 'milestone',
-            icon: 'star',
-            min_order: 150,
-          },
-        ],
+        active_offers: [],
       });
     }
 

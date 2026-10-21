@@ -235,28 +235,7 @@ export default function BusinessSetupModal({
         min_order_for_stamp: Number(minOrder) || 150,
         avg_spend_per_visit: Number(avgSpend) || 250,
         winback_offer_text: winbackOffer.trim(),
-        active_offers: [
-          {
-            id: 'off_1',
-            title: 'Welcome Milestone Treat',
-            stamps_needed: Math.max(1, Math.floor(stampsNeeded / 2)),
-            badge: `${Math.max(1, Math.floor(stampsNeeded / 2))} Stamps Milestone`,
-            desc: `Earned at ${Math.max(1, Math.floor(stampsNeeded / 2))} stamps on your pass`,
-            type: 'milestone',
-            icon: 'flame',
-            min_order: Number(minOrder) || 150,
-          },
-          {
-            id: 'off_2',
-            title: rewardTitle.trim() || 'Free Specialty Beverage',
-            stamps_needed: Number(stampsNeeded) || 6,
-            badge: `${stampsNeeded} Stamps Grand Reward`,
-            desc: rewardDesc.trim() || 'Any handcrafted drink on the house',
-            type: 'milestone',
-            icon: 'star',
-            min_order: Number(minOrder) || 150,
-          },
-        ],
+        active_offers: [],
       };
 
       const res = await fetch(`/api/businesses/${business.id}`, {

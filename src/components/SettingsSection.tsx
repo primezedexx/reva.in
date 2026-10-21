@@ -117,7 +117,6 @@ export default function SettingsSection({
 
   // Modals & Feedback
   const [showGeneralModal, setShowGeneralModal] = useState(false);
-  const [showHeroModal, setShowHeroModal] = useState(false);
   const [showNotificationModal, setShowNotificationModal] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [showQrStandModal, setShowQrStandModal] = useState(false);
@@ -179,7 +178,7 @@ export default function SettingsSection({
     try {
       setIsSaving(true);
       sound.playClick();
-      const res = await fetch(`/api/businesses/${business.slug}`, {
+      const res = await fetch(`/api/businesses/${business.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -223,53 +222,7 @@ export default function SettingsSection({
     }
   }
 
-  // Save Hero Banner & Branding
-  async function handleSaveHeroBanner(e: React.FormEvent) {
-    e.preventDefault();
-    if (!business) return;
-    try {
-      setIsSaving(true);
-      sound.playClick();
-      const currentTheme = business.theme_config || business.reward_rule?.theme_config || {};
-      const updatedTheme: ThemeConfig = {
-        ...currentTheme,
-        custom_tagline: tagline.trim(),
-        description: description.trim(),
-        badge_1: badge1.trim(),
-        badge_2: badge2.trim(),
-        welcome_badge: badge1.trim() || currentTheme.welcome_badge,
-      };
 
-      const res = await fetch(`/api/businesses/${business.slug}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          logo_url: logoUrl.trim() || undefined,
-          theme_config: updatedTheme,
-          reward_rule: {
-            ...business.reward_rule,
-            reward_desc: description.trim() || business.reward_rule.reward_desc,
-            theme_config: updatedTheme,
-          },
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        sound.playRewardFanfare();
-        confetti({ particleCount: 70, spread: 60, origin: { y: 0.6 } });
-        setSaveSuccessToast(true);
-        setShowHeroModal(false);
-        setTimeout(() => setSaveSuccessToast(false), 3500);
-        await onRefresh();
-      } else {
-        alert(data.error || 'Failed to update hero banner');
-      }
-    } catch {
-      alert('Network error saving banner');
-    } finally {
-      setIsSaving(false);
-    }
-  }
 
   // Handle Notification Toggle
   async function handleToggleNotification(
@@ -312,7 +265,7 @@ export default function SettingsSection({
         auto_winback_enabled: winbackVal,
       };
 
-      await fetch(`/api/businesses/${business.slug}`, {
+      await fetch(`/api/businesses/${business.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -418,30 +371,6 @@ export default function SettingsSection({
             </div>
           </button>
 
-          {/* Hero Banner & Brand Story */}
-          <button
-            type="button"
-            onClick={() => {
-              sound.playClick();
-              setShowHeroModal(true);
-            }}
-            className="w-full text-left p-4 flex items-center justify-between hover:bg-slate-50 transition-colors cursor-pointer group"
-          >
-            <div className="flex items-center gap-3.5">
-              <div className="w-10 h-10 rounded-2xl bg-slate-50 text-slate-700 flex items-center justify-center shrink-0 border border-slate-200/80 group-hover:scale-105 group-hover:border-slate-300 transition-all">
-                <Sparkles className="w-4 h-4 text-slate-700" />
-              </div>
-              <div>
-                <div className="font-display font-bold text-xs sm:text-sm text-slate-900">
-                  Hero Banner &amp; Brand Story
-                </div>
-                <div className="text-xs text-slate-400">
-                  Tagline, storefront photo, and customer badges
-                </div>
-              </div>
-            </div>
-            <ChevronRight className="w-4 h-4 text-slate-400" />
-          </button>
 
           {/* Live Customer Pass Link */}
           {business?.slug && (
@@ -777,175 +706,7 @@ export default function SettingsSection({
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* EDIT MODAL 2: HERO BANNER */}
-      {/* ========================================================================= */}
-      {showHeroModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-lg w-full card-soft-shadow border border-slate-100 space-y-5 animate-stamp max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-2xl bg-[#E6F8F2] text-[#059669] flex items-center justify-center font-bold">
-                  <Palette className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="font-display font-bold text-base text-[#0F172A]">
-                    Edit Hero Banner
-                  </h4>
-                  <p className="text-[11px] text-slate-400">
-                    Customize tagline, description, badges and storefront photo
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowHeroModal(false)}
-                className="p-1.5 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
 
-            <form onSubmit={handleSaveHeroBanner} className="space-y-4 text-left">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Tagline (Bold Headline)
-                </label>
-                <input
-                  type="text"
-                  value={tagline}
-                  onChange={(e) => setTagline(e.target.value)}
-                  placeholder="e.g. Bihari Sab Pe Bhari"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#0F172A]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Description
-                </label>
-                <textarea
-                  rows={2}
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="e.g. This is a restaurant where pure taste meets heartwarming hospitality."
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#0F172A]"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Badge 1
-                  </label>
-                  <input
-                    type="text"
-                    value={badge1}
-                    onChange={(e) => setBadge1(e.target.value)}
-                    placeholder="e.g. 10% Vegetarian Options"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#0F172A]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Badge 2
-                  </label>
-                  <input
-                    type="text"
-                    value={badge2}
-                    onChange={(e) => setBadge2(e.target.value)}
-                    placeholder="e.g. Organic Ingredients"
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#0F172A]"
-                  />
-                </div>
-              </div>
-
-              {/* Storefront Image Upload / Presets */}
-              <div className="pt-2 border-t border-slate-100 space-y-2">
-                <label className="block text-xs font-semibold text-slate-700">
-                  Storefront Photo
-                </label>
-                <div className="flex items-center gap-3">
-                  <div className="w-14 h-14 rounded-2xl overflow-hidden bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0">
-                    {logoUrl ? (
-                      <img src={logoUrl} alt="Storefront" className="w-full h-full object-cover" />
-                    ) : (
-                      <Store className="w-6 h-6 text-slate-300" />
-                    )}
-                  </div>
-                  <div className="flex-1 space-y-1.5">
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="w-full py-2 px-3 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                    >
-                      <UploadCloud className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>Upload New Photo</span>
-                    </button>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*"
-                      onChange={handleImageSelect}
-                      className="hidden"
-                    />
-                  </div>
-                </div>
-
-                <div className="pt-1">
-                  <label className="block text-[11px] font-semibold text-slate-500 mb-1">
-                    Or pick preset photo:
-                  </label>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {PRESET_STOREFRONT_PHOTOS.slice(0, 3).map((p) => (
-                      <button
-                        key={p.label}
-                        type="button"
-                        onClick={() => {
-                          setLogoUrl(p.url);
-                          sound.playClick();
-                        }}
-                        className={`p-1.5 rounded-xl border text-[10px] font-medium flex items-center gap-1.5 transition-all cursor-pointer truncate ${
-                          logoUrl === p.url
-                            ? 'border-[#0F172A] bg-slate-900 text-white font-bold'
-                            : 'border-slate-200 bg-slate-50 hover:bg-white text-slate-700'
-                        }`}
-                      >
-                        <img src={p.url} alt={p.label} className="w-5 h-5 rounded-md object-cover shrink-0" />
-                        <span className="truncate">{p.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 pt-3">
-                <button
-                  type="button"
-                  onClick={() => setShowHeroModal(false)}
-                  className="flex-1 py-3 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold cursor-pointer transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className="flex-1 py-3 rounded-2xl bg-[#0F172A] hover:bg-black text-white text-xs font-bold cursor-pointer transition-all shadow-md flex items-center justify-center gap-1.5"
-                >
-                  {isSaving ? (
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <>
-                      <Check className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>Save Banner</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
 
       {/* ========================================================================= */}

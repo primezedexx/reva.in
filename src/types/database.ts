@@ -192,7 +192,7 @@ export interface Visit {
   business_id: string;
   scanned_at: string;
   staff_note?: string;
-  spend_amount: number;
+  spend_amount?: number | null;
   stamp_awarded: number;
 }
 

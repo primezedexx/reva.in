@@ -747,20 +747,20 @@ class RevaDatabase {
     // Unpack extra metadata safely stored in reward_rule JSONB
     if (b.reward_rule) {
       const rr = b.reward_rule as any;
-      if (rr.theme_config && !b.theme_config) b.theme_config = rr.theme_config;
-      if (rr.category && !b.category) b.category = rr.category;
-      if (rr.city && !b.city) b.city = rr.city;
-      if (rr.area && !b.area) b.area = rr.area;
-      if (rr.phone && !b.phone) b.phone = rr.phone;
-      if (rr.phone_verified !== undefined && b.phone_verified === undefined) b.phone_verified = rr.phone_verified;
-      if (rr.address && !b.address) b.address = rr.address;
-      if (rr.google_review_url && !b.google_review_url) b.google_review_url = rr.google_review_url;
-      if (rr.instagram_url && !b.instagram_url) b.instagram_url = rr.instagram_url;
-      if (rr.maps_url && !b.maps_url) b.maps_url = rr.maps_url;
-      if (rr.plan && !b.plan) b.plan = rr.plan;
-      if (rr.trial_ends_at && !b.trial_ends_at) b.trial_ends_at = rr.trial_ends_at;
-      if (rr.subscription_status && !b.subscription_status) b.subscription_status = rr.subscription_status;
-      if (rr.trial_active !== undefined && b.trial_active === undefined) b.trial_active = rr.trial_active;
+      if (rr.theme_config) b.theme_config = { ...(b.theme_config || {}), ...rr.theme_config };
+      if (rr.category !== undefined) b.category = rr.category;
+      if (rr.city !== undefined) b.city = rr.city;
+      if (rr.area !== undefined) b.area = rr.area;
+      if (rr.phone !== undefined) b.phone = rr.phone;
+      if (rr.phone_verified !== undefined) b.phone_verified = rr.phone_verified;
+      if (rr.address !== undefined) b.address = rr.address;
+      if (rr.google_review_url !== undefined) b.google_review_url = rr.google_review_url;
+      if (rr.instagram_url !== undefined) b.instagram_url = rr.instagram_url;
+      if (rr.maps_url !== undefined) b.maps_url = rr.maps_url;
+      if (rr.plan !== undefined) b.plan = rr.plan;
+      if (rr.trial_ends_at !== undefined) b.trial_ends_at = rr.trial_ends_at;
+      if (rr.subscription_status !== undefined) b.subscription_status = rr.subscription_status;
+      if (rr.trial_active !== undefined) b.trial_active = rr.trial_active;
     }
 
     // Self-heal legacy 3-day trial bug to full 30 days
@@ -798,62 +798,14 @@ class RevaDatabase {
       b.is_setup_completed = Boolean(b.is_setup_completed);
     }
 
-    if (!b.active_offers || b.active_offers.length === 0) {
-      b.active_offers = [
-        {
-          id: 'off_1',
-          title: 'Welcome Milestone Reward',
-          stamps_needed: Math.max(1, Math.floor(stampsNeeded / 2)),
-          badge: `${Math.max(1, Math.floor(stampsNeeded / 2))} Stamps Milestone`,
-          desc: `Earned at ${Math.max(1, Math.floor(stampsNeeded / 2))} stamps on your pass`,
-          type: 'milestone',
-          icon: 'flame',
-          min_order: minOrder,
-        },
-        {
-          id: 'off_2',
-          title: rewardTitle,
-          stamps_needed: stampsNeeded,
-          badge: `${stampsNeeded} Stamps Grand Reward`,
-          desc: `Unlocked at ${stampsNeeded} digital stamps`,
-          type: 'milestone',
-          icon: 'star',
-          min_order: minOrder,
-        },
-      ];
+    // Active offers: strictly only display rewards created by the merchant!
+    // Never auto-inject template rewards like "Welcome Treat" or "Welcome Milestone Reward".
+    if (Array.isArray(b.active_offers)) {
+      b.active_offers = b.active_offers.filter(
+        (o) => o && o.id !== 'off_1' && o.title !== 'Welcome Treat' && o.title !== 'Welcome Milestone Reward'
+      );
     } else {
-      // Ensure grand reward offer always syncs with the latest reward_rule title and stamps needed
-      let grandOfferFound = false;
-      b.active_offers = b.active_offers.map((offer) => {
-        if (offer.id === 'off_2' || (offer.type === 'milestone' && (offer.stamps_needed || 6) >= stampsNeeded)) {
-          grandOfferFound = true;
-          return {
-            ...offer,
-            title: rewardTitle,
-            stamps_needed: stampsNeeded,
-            badge: `${stampsNeeded} Stamps Grand Reward`,
-            desc: `Unlocked at ${stampsNeeded} digital stamps`,
-            min_order: minOrder,
-          };
-        }
-        return {
-          ...offer,
-          min_order: offer.min_order || minOrder,
-        };
-      });
-
-      if (!grandOfferFound) {
-        b.active_offers.push({
-          id: 'off_2',
-          title: rewardTitle,
-          stamps_needed: stampsNeeded,
-          badge: `${stampsNeeded} Stamps Grand Reward`,
-          desc: `Unlocked at ${stampsNeeded} digital stamps`,
-          type: 'milestone',
-          icon: 'star',
-          min_order: minOrder,
-        });
-      }
+      b.active_offers = [];
     }
     return b;
   }
@@ -902,26 +854,35 @@ class RevaDatabase {
           ? updates.reward_rule.expiry_days
           : (baseRule.expiry_days ?? 60),
       theme_config: themeConfig,
-      category: updates.category || existing?.category,
-      city: updates.city || existing?.city,
-      area: updates.area || existing?.area,
-      phone: updates.phone !== undefined ? updates.phone : existing?.phone,
+      category: updates.category !== undefined ? updates.category : (updates.reward_rule?.category !== undefined ? updates.reward_rule.category : existing?.category),
+      city: updates.city !== undefined ? updates.city : (updates.reward_rule?.city !== undefined ? updates.reward_rule.city : existing?.city),
+      area: updates.area !== undefined ? updates.area : (updates.reward_rule?.area !== undefined ? updates.reward_rule.area : existing?.area),
+      phone: updates.phone !== undefined ? updates.phone : (updates.reward_rule?.phone !== undefined ? updates.reward_rule.phone : existing?.phone),
       phone_verified:
         (updates as any).phone_verified !== undefined
           ? (updates as any).phone_verified
           : ((updates.reward_rule as any)?.phone_verified !== undefined
             ? (updates.reward_rule as any)?.phone_verified
             : (existing?.reward_rule as any)?.phone_verified ?? false),
-      address: updates.address || existing?.address,
-      google_review_url: updates.google_review_url || existing?.google_review_url,
-      instagram_url: updates.instagram_url || existing?.instagram_url,
-      maps_url: updates.maps_url || existing?.maps_url,
+      address: updates.address !== undefined ? updates.address : (updates.reward_rule?.address !== undefined ? updates.reward_rule.address : existing?.address),
+      google_review_url: updates.google_review_url !== undefined ? updates.google_review_url : (updates.reward_rule?.google_review_url !== undefined ? updates.reward_rule.google_review_url : existing?.google_review_url),
+      instagram_url: updates.instagram_url !== undefined ? updates.instagram_url : (updates.reward_rule?.instagram_url !== undefined ? updates.reward_rule.instagram_url : existing?.instagram_url),
+      maps_url: updates.maps_url !== undefined ? updates.maps_url : (updates.reward_rule?.maps_url !== undefined ? updates.reward_rule.maps_url : existing?.maps_url),
       plan: updates.plan || existing?.plan,
       trial_ends_at: updates.trial_ends_at || existing?.trial_ends_at,
       subscription_status: updates.subscription_status || existing?.subscription_status,
       trial_active: updates.trial_active ?? existing?.trial_active,
       is_setup_completed: isSetupDone,
     };
+
+    effectiveUpdates.category = effectiveUpdates.reward_rule.category;
+    effectiveUpdates.city = effectiveUpdates.reward_rule.city;
+    effectiveUpdates.area = effectiveUpdates.reward_rule.area;
+    effectiveUpdates.phone = effectiveUpdates.reward_rule.phone;
+    effectiveUpdates.address = effectiveUpdates.reward_rule.address;
+    effectiveUpdates.google_review_url = effectiveUpdates.reward_rule.google_review_url;
+    effectiveUpdates.instagram_url = effectiveUpdates.reward_rule.instagram_url;
+    effectiveUpdates.maps_url = effectiveUpdates.reward_rule.maps_url;
 
     const currentOffers = updates.active_offers !== undefined ? updates.active_offers : (existing?.active_offers || []);
     if (updates.active_offers !== undefined) {
@@ -1059,28 +1020,7 @@ class RevaDatabase {
       winback_delay_multiplier: businessData.winback_delay_multiplier || 1.5,
       winback_min_days: businessData.winback_min_days || 5,
       winback_offer_text: businessData.winback_offer_text || 'Complimentary treat on your next visit',
-      active_offers: businessData.active_offers || [
-        {
-          id: 'off_1',
-          title: 'Welcome Treat',
-          stamps_needed: 3,
-          badge: '3 Stamps Milestone',
-          desc: 'Earned at 3 stamps on your digital pass',
-          type: 'milestone',
-          icon: 'flame',
-          min_order: 150,
-        },
-        {
-          id: 'off_2',
-          title: businessData.reward_rule?.reward_title || 'Free Specialty Beverage',
-          stamps_needed: initialStamps,
-          badge: `${initialStamps} Stamps Grand Reward`,
-          desc: 'Any handcrafted drink on the house',
-          type: 'milestone',
-          icon: 'star',
-          min_order: 150,
-        },
-      ],
+      active_offers: businessData.active_offers || [],
       plan: businessData.plan || 'growth',
       trial_ends_at: businessData.trial_ends_at || new Date(Date.now() + 30 * 86400000).toISOString(),
       subscription_status: businessData.subscription_status || 'trialing',
@@ -1849,7 +1789,8 @@ class RevaDatabase {
     const bus = await this.getBusinessById(businessId);
     if (!mem || !bus) throw new Error('Membership or business not found');
 
-    const spend = spendAmount !== undefined && spendAmount !== null ? Number(spendAmount) : (bus.avg_spend_per_visit || 250);
+    const actualSpend = !isQrScan && spendAmount !== undefined && spendAmount !== null ? Number(spendAmount) : null;
+    const spend = actualSpend !== null ? actualSpend : (bus.avg_spend_per_visit || 250);
     const stampsNeeded = bus.reward_rule?.stamps_needed || 6;
     const now = new Date();
     const nowIso = now.toISOString();
@@ -1877,7 +1818,7 @@ class RevaDatabase {
     // Preserve completed stamps so customer sees full card (e.g. 6/6) and reward ready to claim!
     const newStamps = currentStamps;
     const newTotalVisits = prevVisits + 1;
-    const newTotalSpend = prevSpend + spend;
+    const newTotalSpend = prevSpend + (actualSpend || 0);
     const updatedQrTimestamp = isQrScan ? nowIso : (mem.last_qr_stamp_at || null);
 
     const actualMemId = mem.id;
@@ -1928,7 +1869,7 @@ class RevaDatabase {
         .insert({
           membership_id: actualMemId,
           business_id: actualBusId,
-          spend_amount: spend,
+          spend_amount: actualSpend,
           stamp_awarded: stampCount,
           staff_note: staffNote,
         })
@@ -1946,6 +1887,7 @@ class RevaDatabase {
           total_visits: newTotalVisits,
           total_spend: newTotalSpend,
           last_visit_at: nowIso,
+          last_qr_stamp_at: updatedQrTimestamp,
           avg_visit_gap_days: newAvgGap,
         })
         .eq('id', actualMemId);
@@ -1976,7 +1918,7 @@ class RevaDatabase {
       business_id: actualBusId,
       scanned_at: nowIso,
       staff_note: staffNote,
-      spend_amount: spend,
+      spend_amount: actualSpend ?? undefined,
       stamp_awarded: stampCount,
     };
 
@@ -2625,7 +2567,7 @@ class RevaDatabase {
           business_id: businessId,
           scanned_at: stampDateIso,
           staff_note: `Counter Staff Verified Stamp (+${diff})`,
-          spend_amount: bus.avg_spend_per_visit || 250,
+          spend_amount: null,
           stamp_awarded: diff,
         };
 

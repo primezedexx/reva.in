@@ -219,9 +219,41 @@ function OwnerDashboardContent() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const modalFileInputRef = useRef<HTMLInputElement>(null);
 
-  const [businesses, setBusinesses] = useState<Business[]>([]);
-  const [selectedBusiness, setSelectedBusiness] = useState<Business | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [businesses, setBusinesses] = useState<Business[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const cached = sessionStorage.getItem('reva_cached_dashboard');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        return parsed.allBusinesses || (parsed.business ? [parsed.business] : []);
+      }
+    } catch {}
+    return [];
+  });
+
+  const [selectedBusiness, setSelectedBusiness] = useState<Business | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const cached = sessionStorage.getItem('reva_cached_dashboard');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        return parsed.business || null;
+      }
+    } catch {}
+    return null;
+  });
+
+  const [loading, setLoading] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    try {
+      const cached = sessionStorage.getItem('reva_cached_dashboard');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed.business) return false;
+      }
+    } catch {}
+    return true;
+  });
   const [activeTab, setActiveTab] = useState<'home' | 'reward' | 'stats' | 'profile' | 'settings'>('home');
 
   const [stampTimeRange, setStampTimeRange] = useState<'today' | '7d' | '30d' | 'all'>('today');
@@ -250,7 +282,17 @@ function OwnerDashboardContent() {
     recentLogs: WhatsAppLog[];
     recentVisits?: StampActivityLog[];
     members: Membership[];
-  } | null>(null);
+  } | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const cached = sessionStorage.getItem('reva_cached_dashboard');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        return parsed.metrics || null;
+      }
+    } catch {}
+    return null;
+  });
 
   // Stats Sub-Tab state & Live Stamp Tracking
   const [statsActiveSection, setStatsActiveSection] = useState<'stamps' | 'crm' | 'whatsapp'>('stamps');
@@ -846,11 +888,12 @@ function OwnerDashboardContent() {
       isInitializing = false;
     }
 
+    let hasLoadedSession = false;
+
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        initSession(session.user);
-      } else {
-        initSession(null);
+      if (!hasLoadedSession) {
+        hasLoadedSession = true;
+        initSession(session?.user || null);
       }
     });
 
@@ -858,11 +901,8 @@ function OwnerDashboardContent() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
-        if (session?.user) {
-          try {
-            sessionStorage.removeItem('reva_cached_dashboard');
-            sessionStorage.removeItem('reva_cached_business_id');
-          } catch {}
+        if (session?.user && !hasLoadedSession) {
+          hasLoadedSession = true;
           initSession(session.user);
         }
       } else if (event === 'SIGNED_OUT') {
@@ -1340,7 +1380,7 @@ function OwnerDashboardContent() {
     try {
       setIsUploadingStoreImage(true);
       sound.playStampPop();
-      const res = await fetch(`/api/businesses/${selectedBusiness.slug}`, {
+      const res = await fetch(`/api/businesses/${selectedBusiness.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1374,7 +1414,7 @@ function OwnerDashboardContent() {
       const trimmedPhone = settingsPhone.trim();
       const isCurrentPhoneVerified = Boolean(trimmedPhone);
 
-      const res = await fetch(`/api/businesses/${selectedBusiness.slug}`, {
+      const res = await fetch(`/api/businesses/${selectedBusiness.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1406,6 +1446,9 @@ function OwnerDashboardContent() {
       });
       const data = await res.json();
       if (data.success) {
+        if (data.business) {
+          setSelectedBusiness(data.business);
+        }
         sound.playRewardFanfare();
         confetti({ particleCount: 60, spread: 60, origin: { y: 0.6 } });
         setSettingsSavedSuccess(true);
@@ -1437,7 +1480,7 @@ function OwnerDashboardContent() {
 
     try {
       if (selectedBusiness) {
-        const updateRes = await fetch(`/api/businesses/${selectedBusiness.slug}`, {
+        const updateRes = await fetch(`/api/businesses/${selectedBusiness.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1492,7 +1535,7 @@ function OwnerDashboardContent() {
         welcome_badge: settingsBadge1.trim() || currentTheme.welcome_badge,
       };
 
-      const res = await fetch(`/api/businesses/${selectedBusiness.slug}`, {
+      const res = await fetch(`/api/businesses/${selectedBusiness.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1572,7 +1615,7 @@ function OwnerDashboardContent() {
         });
       }
 
-      const res = await fetch(`/api/businesses/${selectedBusiness.slug}`, {
+      const res = await fetch(`/api/businesses/${selectedBusiness.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1655,7 +1698,7 @@ function OwnerDashboardContent() {
         auto_winback_enabled: winbackVal,
       };
 
-      await fetch(`/api/businesses/${selectedBusiness.slug}`, {
+      await fetch(`/api/businesses/${selectedBusiness.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1693,7 +1736,7 @@ function OwnerDashboardContent() {
       const existingOffers = selectedBusiness.active_offers || [];
       const updatedOffers = [...existingOffers, newOffer].sort((a, b) => (a.stamps_needed || 0) - (b.stamps_needed || 0));
 
-      const res = await fetch(`/api/businesses/${selectedBusiness.slug}`, {
+      const res = await fetch(`/api/businesses/${selectedBusiness.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1711,6 +1754,11 @@ function OwnerDashboardContent() {
         setNewOfferStamps(8);
         setNewOfferBadge('8 Stamps Reward');
         setNewOfferExpiryDays('30');
+        if (data.business) {
+          setSelectedBusiness(data.business);
+        } else {
+          setSelectedBusiness(prev => prev ? { ...prev, active_offers: updatedOffers } : null);
+        }
         await loadDashboardData(selectedBusiness.id);
       }
     } catch {
@@ -1756,7 +1804,7 @@ function OwnerDashboardContent() {
         return o;
       }).sort((a, b) => (a.stamps_needed || 0) - (b.stamps_needed || 0));
 
-      const res = await fetch(`/api/businesses/${selectedBusiness.slug}`, {
+      const res = await fetch(`/api/businesses/${selectedBusiness.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1770,6 +1818,11 @@ function OwnerDashboardContent() {
         confetti({ particleCount: 60, spread: 50, origin: { y: 0.6 } });
         setShowEditOfferModal(false);
         setEditingOffer(null);
+        if (data.business) {
+          setSelectedBusiness(data.business);
+        } else {
+          setSelectedBusiness(prev => prev ? { ...prev, active_offers: updatedOffers } : null);
+        }
         await loadDashboardData(selectedBusiness.id);
       } else {
         alert(data.error || 'Failed to update reward');
@@ -1790,7 +1843,7 @@ function OwnerDashboardContent() {
       const existingOffers = selectedBusiness.active_offers || [];
       const updatedOffers = existingOffers.filter((o) => o.id !== offerId);
 
-      const res = await fetch(`/api/businesses/${selectedBusiness.slug}`, {
+      const res = await fetch(`/api/businesses/${selectedBusiness.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1800,6 +1853,11 @@ function OwnerDashboardContent() {
 
       const data = await res.json();
       if (data.success) {
+        if (data.business) {
+          setSelectedBusiness(data.business);
+        } else {
+          setSelectedBusiness(prev => prev ? { ...prev, active_offers: updatedOffers } : null);
+        }
         await loadDashboardData(selectedBusiness.id);
       } else {
         alert(data.error || 'Failed to delete offer');
@@ -3673,11 +3731,10 @@ function OwnerDashboardContent() {
 
             {/* SECTION 2: ACTIVE REWARDS */}
             {(() => {
-              const totalStamps = settingsStamps || selectedBusiness?.reward_rule?.stamps_needed || 6;
-              const grandTitle = settingsRewardTitle || selectedBusiness?.reward_rule?.reward_title || 'Free Specialty Beverage';
-              const minBill = settingsMinOrder || selectedBusiness?.reward_rule?.min_order_for_stamp || 150;
-              const allOffers = selectedBusiness?.active_offers || [];
-              const additionalRewards = allOffers.filter((o) => o.title !== grandTitle || (o.stamps_needed || 0) !== totalStamps);
+              const activeRewards = (selectedBusiness?.active_offers || []).filter(
+                (o) => o && o.id !== 'off_1' && o.title !== 'Welcome Treat' && o.title !== 'Welcome Milestone Reward' &&
+                       !(o.id === 'off_2' && o.title === 'Free Specialty Beverage')
+              );
 
               return (
                 <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-100 card-soft-shadow space-y-4">
@@ -3690,7 +3747,7 @@ function OwnerDashboardContent() {
                         <h3 className="font-display font-bold text-sm text-[#0F172A] flex items-center gap-2">
                           <span>Active Rewards</span>
                           <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                            {1 + additionalRewards.length} Active
+                            {activeRewards.length} Active
                           </span>
                         </h3>
                       </div>
@@ -3700,10 +3757,10 @@ function OwnerDashboardContent() {
                       type="button"
                       onClick={() => {
                         sound.playClick();
-                        setNewOfferStamps(8);
+                        setNewOfferStamps(6);
                         setNewOfferTitle('');
                         setNewOfferDesc('');
-                        setNewOfferBadge('8 Stamps Reward');
+                        setNewOfferBadge('6 Stamps Reward');
                         setNewOfferExpiryDays('30');
                         setShowCreateOfferModal(true);
                       }}
@@ -3714,116 +3771,97 @@ function OwnerDashboardContent() {
                     </button>
                   </div>
 
-                  <div className={`grid gap-3 ${additionalRewards.length > 0 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
-                    {/* CARD 1: PRIMARY GRAND REWARD (SPECIALTY BEVERAGE REWARD) */}
-                    <div className="p-4 rounded-2xl border-2 border-amber-300/80 bg-linear-to-br from-amber-50/70 via-white to-amber-50/30 flex flex-col justify-between shadow-2xs">
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300">
-                            <Award className="w-3 h-3 text-amber-700" />
-                            <span>Unlock at {totalStamps} Stamps</span>
-                          </span>
-                          <span className="inline-flex items-center gap-1 text-[11px] font-mono font-bold text-emerald-700">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                            <span>Live on Pass</span>
-                          </span>
-                        </div>
-
-                        <div>
-                          <h4 className="text-sm font-bold text-slate-900 font-display">
-                            {grandTitle}
-                          </h4>
-                          <p className="text-xs text-slate-600 mt-0.5">
-                            Unlocked automatically when customer completes <b>{totalStamps} stamps</b>.
-                          </p>
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-2 pt-0.5 text-[10px] font-mono text-slate-500">
-                          <span className="px-2 py-0.5 rounded-md bg-white border border-slate-200 font-bold text-slate-700">
-                            Unlock at: {totalStamps} Stamps
-                          </span>
-                        </div>
+                  {activeRewards.length === 0 ? (
+                    <div className="p-8 text-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 flex flex-col items-center justify-center gap-3">
+                      <div className="w-12 h-12 rounded-2xl bg-white border border-slate-200 flex items-center justify-center text-slate-400 shadow-2xs">
+                        <Gift className="w-6 h-6 text-slate-400" />
                       </div>
-
-                      <div className="pt-2.5 mt-2 border-t border-amber-200/60 flex items-center justify-between">
-                        <span className="text-[10px] text-slate-500 font-medium">
-                          Configured in Store Settings
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setActiveTab('settings');
-                            sound.playClick();
-                          }}
-                          className="px-2.5 py-1 rounded-lg bg-amber-200/80 hover:bg-amber-300 text-amber-950 text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer"
-                        >
-                          <Edit3 className="w-3 h-3" />
-                          <span>Edit in Settings</span>
-                        </button>
+                      <div className="space-y-1">
+                        <h4 className="text-sm font-bold text-slate-800 font-display">No active rewards yet</h4>
+                        <p className="text-xs text-slate-500 max-w-sm">
+                          You haven't created any rewards yet. Click "+ Create Reward" to add milestone rewards for your customers.
+                        </p>
                       </div>
-                    </div>
-
-                    {/* CARDS FOR ADDITIONAL ACTIVE REWARDS */}
-                    {additionalRewards.map((offer) => (
-                      <div
-                        key={offer.id}
-                        className="p-4 rounded-2xl border border-slate-200 bg-white flex flex-col justify-between shadow-2xs hover:border-slate-300 transition-all"
+                      <button
+                        type="button"
+                        onClick={() => {
+                          sound.playClick();
+                          setNewOfferStamps(6);
+                          setNewOfferTitle('');
+                          setNewOfferDesc('');
+                          setNewOfferBadge('6 Stamps Reward');
+                          setNewOfferExpiryDays('30');
+                          setShowCreateOfferModal(true);
+                        }}
+                        className="mt-1 px-4 py-2 rounded-xl bg-[#0F172A] hover:bg-black text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
                       >
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-emerald-50 text-emerald-800 border border-emerald-200">
-                              <Gift className="w-3 h-3 text-emerald-600" />
-                              <span>Unlock at {offer.stamps_needed} Stamps</span>
-                            </span>
-                            <span className="inline-flex items-center gap-1 text-[11px] font-mono font-bold text-emerald-700">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                              <span>Live on Pass</span>
-                            </span>
+                        <Plus className="w-3.5 h-3.5 text-emerald-400 stroke-[3]" />
+                        <span>+ Create Reward</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className={`grid gap-3 ${activeRewards.length > 1 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
+                      {activeRewards.map((offer) => (
+                        <div
+                          key={offer.id}
+                          className="p-4 rounded-2xl border border-slate-200 bg-white flex flex-col justify-between shadow-2xs hover:border-slate-300 transition-all"
+                        >
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                <Gift className="w-3 h-3 text-emerald-600" />
+                                <span>Unlock at {offer.stamps_needed} Stamps</span>
+                              </span>
+                              <span className="inline-flex items-center gap-1 text-[11px] font-mono font-bold text-emerald-700">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                <span>Live on Pass</span>
+                              </span>
+                            </div>
+
+                            <div>
+                              <h4 className="text-sm font-bold text-slate-900 font-display">
+                                {offer.title}
+                              </h4>
+                              <p className="text-xs text-slate-600 mt-0.5">
+                                {offer.desc || `Unlocked after completing ${offer.stamps_needed} stamps.`}
+                              </p>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-2 pt-0.5 text-[10px] font-mono text-slate-500">
+                              <span className="px-2 py-0.5 rounded-md bg-slate-50 border border-slate-200 font-bold text-slate-700">
+                                Unlock at: {offer.stamps_needed} Stamps
+                              </span>
+                              <span className="px-2 py-0.5 rounded-md bg-slate-50 border border-slate-200 flex items-center gap-1">
+                                <Clock className="w-3 h-3 text-slate-400" />
+                                <span>{offer.expiry_days ? `Expires: ${offer.expiry_days} days` : 'No expiry'}</span>
+                              </span>
+                            </div>
                           </div>
 
-                          <div>
-                            <h4 className="text-sm font-bold text-slate-900 font-display">
-                              {offer.title}
-                            </h4>
-                            <p className="text-xs text-slate-600 mt-0.5">
-                              {offer.desc || `Unlocked after completing ${offer.stamps_needed} stamps.`}
-                            </p>
-                          </div>
+                          <div className="pt-2.5 mt-2 border-t border-slate-100 flex items-center justify-between">
+                            <button
+                              type="button"
+                              disabled={isDeletingOfferId === offer.id}
+                              onClick={() => handleDeleteOffer(offer.id)}
+                              className="px-2.5 py-1 rounded-lg text-red-600 hover:bg-red-50 text-[11px] font-semibold transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              <span>Remove</span>
+                            </button>
 
-                          <div className="flex flex-wrap items-center gap-2 pt-0.5 text-[10px] font-mono text-slate-500">
-                            <span className="px-2 py-0.5 rounded-md bg-slate-50 border border-slate-200 font-bold text-slate-700">
-                              Unlock at: {offer.stamps_needed} Stamps
-                            </span>
-                            <span className="px-2 py-0.5 rounded-md bg-slate-50 border border-slate-200 flex items-center gap-1">
-                              <Clock className="w-3 h-3 text-slate-400" />
-                              <span>{offer.expiry_days ? `Expires: ${offer.expiry_days} days` : 'No expiry'}</span>
-                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditOfferModal(offer)}
+                              className="px-3 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer"
+                            >
+                              <Edit2 className="w-3 h-3" />
+                              <span>Edit</span>
+                            </button>
                           </div>
                         </div>
-
-                        <div className="pt-2.5 mt-2 border-t border-slate-100 flex items-center justify-between">
-                          <button
-                            type="button"
-                            disabled={isDeletingOfferId === offer.id}
-                            onClick={() => handleDeleteOffer(offer.id)}
-                            className="px-2.5 py-1 rounded-lg text-red-600 hover:bg-red-50 text-[11px] font-semibold transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                            <span>Remove</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleOpenEditOfferModal(offer)}
-                            className="px-3 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer"
-                          >
-                            <Edit2 className="w-3 h-3" />
-                            <span>Edit</span>
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               );
             })()}
@@ -4415,7 +4453,7 @@ function OwnerDashboardContent() {
 
                           <div className="flex items-center justify-between text-[11px] text-slate-500 font-mono pt-1 border-t border-slate-50">
                             <span>{formatStampAuditDate(visit.scanned_at)}</span>
-                            {visit.spend_amount ? <span>₹{visit.spend_amount}</span> : null}
+                            {!visit.is_qr && visit.spend_amount && Number(visit.spend_amount) > 0 ? <span>₹{visit.spend_amount}</span> : null}
                           </div>
                         </div>
                       ))}

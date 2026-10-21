@@ -318,12 +318,6 @@ export default function CameraQrScannerModal({
       animationFrameId.current = null;
     }
 
-    if (qrScannerRef.current) {
-      try {
-        qrScannerRef.current.stop();
-      } catch {}
-    }
-
     try {
       if (typeof navigator !== 'undefined' && navigator.vibrate) {
         navigator.vibrate([40, 30, 40]);
@@ -371,6 +365,16 @@ export default function CameraQrScannerModal({
       }
     }
 
+    // Immediately show recognition feedback so screen never goes dark with bouncing laser
+    const initialName = (p.currentSlug && targetSlug === p.currentSlug)
+      ? 'Your Café'
+      : targetSlug.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+    setRecognizedStore({
+      name: initialName,
+      slug: targetSlug,
+    });
+
     // Branch B: Same store scan
     try {
       const effectivePhone =
@@ -416,31 +420,42 @@ export default function CameraQrScannerModal({
           return;
         }
 
-        sound.playStampPop();
-        setRecognizedStore({
-          name: bizName,
-          slug: bizSlug,
-          logo_url: stampData.membership?.business?.logo_url || stampData.business?.logo_url,
-        });
-
-        if (p.onStampClaimed) {
-          p.onStampClaimed({
-            success: Boolean(stampData.success),
-            cooldownActive: false,
-            hoursRemaining: stampData.hoursRemaining,
-            minutesRemaining: stampData.minutesRemaining,
-            message: stampData.message || stampData.error,
-            membership: stampData.membership,
-            rewardId: p.rewardId,
-            passStamps: stampData.passStamps,
-            business: { name: bizName, slug: bizSlug, id: stampData.membership?.business_id || stampData.business?.id },
+        if (stampRes.ok && stampData.success) {
+          sound.playStampPop();
+          setRecognizedStore({
+            name: bizName,
+            slug: bizSlug,
+            logo_url: stampData.membership?.business?.logo_url || stampData.business?.logo_url,
           });
-        }
 
-        setTimeout(() => {
-          stopCameraStream();
-          p.onClose();
-        }, 550);
+          if (p.onStampClaimed) {
+            p.onStampClaimed({
+              success: true,
+              cooldownActive: false,
+              hoursRemaining: stampData.hoursRemaining,
+              minutesRemaining: stampData.minutesRemaining,
+              message: stampData.message,
+              membership: stampData.membership,
+              rewardId: p.rewardId,
+              passStamps: stampData.passStamps,
+              business: { name: bizName, slug: bizSlug, id: stampData.membership?.business_id || stampData.business?.id },
+            });
+          }
+
+          setTimeout(() => {
+            stopCameraStream();
+            p.onClose();
+          }, 450);
+        } else {
+          setRecognizedStore(null);
+          setErrorMessage(stampData.error || stampData.message || 'Could not verify stamp');
+          setTimeout(() => {
+            isProcessingRef.current = false;
+            setIsProcessing(false);
+            setErrorMessage(null);
+            startScanLoop();
+          }, 1500);
+        }
       } else {
         let biz = null;
         try {
@@ -473,12 +488,14 @@ export default function CameraQrScannerModal({
       }
     } catch (err) {
       console.error('QR scan resolution error:', err);
-      setErrorMessage('Failed to process QR scan. Please point camera again.');
+      setRecognizedStore(null);
+      setErrorMessage('Connection issue. Please scan again.');
       setTimeout(() => {
         isProcessingRef.current = false;
         setIsProcessing(false);
+        setErrorMessage(null);
         startScanLoop();
-      }, 1200);
+      }, 1500);
     }
   }, [stopCameraStream]);
 
