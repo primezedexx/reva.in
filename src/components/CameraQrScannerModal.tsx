@@ -235,6 +235,20 @@ export default function CameraQrScannerModal({
         });
 
         const stampData = await stampRes.json();
+
+        if (stampData.noActiveRewards || (stampRes.status === 400 && stampData.error?.includes('no active rewards'))) {
+          sound.playClick();
+          setRecognizedStore(null);
+          setErrorMessage('There are no active rewards for this cafe right now.');
+          setTimeout(() => {
+            isProcessingRef.current = false;
+            setIsProcessing(false);
+            setErrorMessage(null);
+            startScanLoop();
+          }, 3500);
+          return;
+        }
+
         const isCooldown = Boolean(stampData.cooldownActive || stampRes.status === 429);
         const bizName = stampData.membership?.business?.name || stampData.business?.name || scannedName;
         const bizSlug = stampData.membership?.business?.slug || stampData.business?.slug || scannedSlug;
@@ -399,6 +413,20 @@ export default function CameraQrScannerModal({
         });
 
         const stampData = await stampRes.json();
+
+        if (stampData.noActiveRewards || (stampRes.status === 400 && stampData.error?.includes('no active rewards'))) {
+          sound.playClick();
+          setRecognizedStore(null);
+          setErrorMessage('There are no active rewards for this cafe right now.');
+          setTimeout(() => {
+            isProcessingRef.current = false;
+            setIsProcessing(false);
+            setErrorMessage(null);
+            startScanLoop();
+          }, 3500);
+          return;
+        }
+
         const isCooldown = Boolean(stampData.cooldownActive || stampRes.status === 429);
         const bizName = stampData.membership?.business?.name || stampData.business?.name || targetSlug;
         const bizSlug = stampData.membership?.business?.slug || stampData.business?.slug || targetSlug;
@@ -634,36 +662,36 @@ export default function CameraQrScannerModal({
       }
 
       setCameraState('active');
-
-      // Check flash availability
-      try {
-        const flashAvailable = await scanner.hasFlash();
-        setHasTorch(flashAvailable);
-      } catch {
-        setHasTorch(false);
-      }
-
-      // Macro focus & zoom optimizations
-      try {
-        const stream = videoRef.current.srcObject as MediaStream;
-        if (stream) {
-          streamRef.current = stream;
-          const track = stream.getVideoTracks()[0];
-          const caps = (track?.getCapabilities?.() || {}) as any;
-          const adv: any = {};
-          if (caps.focusMode?.includes('continuous')) adv.focusMode = 'continuous';
-          if (caps.exposureMode?.includes('continuous')) adv.exposureMode = 'continuous';
-          if (caps.zoom && caps.zoom.max && caps.zoom.max >= 1.2) {
-            adv.zoom = Math.min(caps.zoom.max, 1.2);
-          }
-          if (Object.keys(adv).length > 0) {
-            await track.applyConstraints({ advanced: [adv] });
-          }
-        }
-      } catch {}
-
       isStartingCameraRef.current = false;
       startScanLoop();
+
+      // Check flash availability & macro focus in non-blocking background task
+      (async () => {
+        try {
+          const flashAvailable = await scanner.hasFlash();
+          setHasTorch(flashAvailable);
+        } catch {
+          setHasTorch(false);
+        }
+
+        try {
+          const stream = videoRef.current?.srcObject as MediaStream;
+          if (stream) {
+            streamRef.current = stream;
+            const track = stream.getVideoTracks()[0];
+            const caps = (track?.getCapabilities?.() || {}) as any;
+            const adv: any = {};
+            if (caps.focusMode?.includes('continuous')) adv.focusMode = 'continuous';
+            if (caps.exposureMode?.includes('continuous')) adv.exposureMode = 'continuous';
+            if (caps.zoom && caps.zoom.max && caps.zoom.max >= 1.2) {
+              adv.zoom = Math.min(caps.zoom.max, 1.2);
+            }
+            if (Object.keys(adv).length > 0) {
+              await track.applyConstraints({ advanced: [adv] });
+            }
+          }
+        } catch {}
+      })();
     } catch (err) {
       isStartingCameraRef.current = false;
       if (currentGen !== streamGenRef.current) return;
@@ -707,9 +735,12 @@ export default function CameraQrScannerModal({
   // Lifecycle on modal Open/Close ONLY (No flickering on parent re-renders)
   useEffect(() => {
     if (isOpen) {
-      if (!qrScannerRef.current && !isStartingCameraRef.current) {
-        startCamera(facingMode);
-      }
+      const rId = requestAnimationFrame(() => {
+        if (!qrScannerRef.current && !isStartingCameraRef.current) {
+          startCamera(facingMode);
+        }
+      });
+      return () => cancelAnimationFrame(rId);
     } else {
       stopCameraStream();
       setCameraState('prompt');

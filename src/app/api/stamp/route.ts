@@ -51,6 +51,36 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Business not found' }, { status: 404 });
     }
 
+    // Verify cafe has an active reward campaign before awarding stamps
+    const activeOffers = (targetBusiness?.active_offers || []).filter(
+      (o: any) =>
+        o &&
+        o.id !== 'off_1' &&
+        o.title !== 'Welcome Treat' &&
+        o.title !== 'Welcome Milestone Reward' &&
+        !(o.id === 'off_2' && o.title === 'Free Specialty Beverage')
+    );
+    const hasCustomActiveReward =
+      activeOffers.length > 0 ||
+      Boolean(
+        targetBusiness?.reward_rule?.reward_title &&
+        targetBusiness?.reward_rule?.reward_title !== 'Free Specialty Beverage' &&
+        targetBusiness?.reward_rule?.is_setup_completed
+      );
+
+    if (!hasCustomActiveReward) {
+      return NextResponse.json(
+        {
+          success: false,
+          noActiveRewards: true,
+          error: 'There are no active rewards for this cafe right now.',
+          message: 'There are no active rewards for this cafe right now.',
+          business: targetBusiness,
+        },
+        { status: 400 }
+      );
+    }
+
     let targetMemId = explicitMemId;
     let currentMem = null;
     let customer = null;

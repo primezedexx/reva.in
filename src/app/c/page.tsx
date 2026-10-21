@@ -112,6 +112,41 @@ interface BusinessItem {
   }>;
 }
 
+export interface CustomerPassItem {
+  id?: string;
+  rewardId?: string;
+  businessId?: string;
+  slug: string;
+  name: string;
+  category: string;
+  brandColor: string;
+  logo_url?: string;
+  stamps: number;
+  totalStamps: number;
+  rewardTitle: string;
+  lastVisit: string;
+  minOrder?: number;
+  passId?: string;
+  cycle?: number;
+  googleReviewUrl?: string;
+  phone?: string;
+  maps_url?: string;
+  instagram_url?: string;
+  description?: string;
+  address?: string;
+  area?: string;
+  city?: string;
+  joined_at?: string;
+  last_visit_at?: string;
+  last_qr_stamp_at?: string;
+  theme_config?: ThemeConfig;
+  reward_rule?: any;
+  active_offers?: any[];
+  total_visits?: number;
+  expiry_days?: number;
+  expiryDays?: number;
+}
+
 interface ClaimedReward {
   id: string;
   businessName: string;
@@ -341,11 +376,35 @@ function getPassKey(pass: any, index: number = 0): string {
   return `${pass.slug || 'pass'}_${index}`;
 }
 
+export function isStoreRewardActive(storeOrPass: any): boolean {
+  if (!storeOrPass) return false;
+  const offers = (Array.isArray(storeOrPass.active_offers) && storeOrPass.active_offers.length > 0)
+    ? storeOrPass.active_offers
+    : (Array.isArray(storeOrPass.reward_rule?.active_offers) && storeOrPass.reward_rule.active_offers.length > 0)
+      ? storeOrPass.reward_rule.active_offers
+      : [];
+  const filteredOffers = offers.filter(
+    (o: any) =>
+      o &&
+      o.id !== 'off_1' &&
+      o.title !== 'Welcome Treat' &&
+      o.title !== 'Welcome Milestone Reward' &&
+      !(o.id === 'off_2' && o.title === 'Free Specialty Beverage')
+  );
+  if (filteredOffers.length > 0) return true;
+  const title = (storeOrPass.rewardTitle || storeOrPass.reward_rule?.reward_title || '').trim();
+  if (title && title.toLowerCase() !== 'free specialty beverage') {
+    return true;
+  }
+  return false;
+}
+
 function CustomerPortalContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialTab = searchParams.get('tab');
   const storeParam = searchParams.get('store') || searchParams.get('slug');
+  const isPreviewMode = searchParams.get('test') === '1' || searchParams.get('preview') === '1';
 
   // Active Bottom Tab: 'home' | 'rewards' | 'details' | 'profile' | 'explore'
   const [activeTab, setActiveTab] = useState<'home' | 'explore' | 'rewards' | 'details' | 'profile'>(() => {
@@ -447,42 +506,7 @@ function CustomerPortalContent() {
   const [joinError, setJoinError] = useState<string | null>(null);
 
   // Customer's Joined Passes (starts empty for new users)
-  const [userPasses, setUserPasses] = useState<
-    Array<{
-      id?: string;
-      rewardId?: string;
-      businessId?: string;
-      slug: string;
-      name: string;
-      category: string;
-      brandColor: string;
-      logo_url?: string;
-      stamps: number;
-      totalStamps: number;
-      rewardTitle: string;
-      lastVisit: string;
-      minOrder?: number;
-      passId?: string;
-      cycle?: number;
-      googleReviewUrl?: string;
-      phone?: string;
-      maps_url?: string;
-      instagram_url?: string;
-      description?: string;
-      address?: string;
-      area?: string;
-      city?: string;
-      joined_at?: string;
-      last_visit_at?: string;
-      last_qr_stamp_at?: string;
-      theme_config?: ThemeConfig;
-      reward_rule?: RewardRule;
-      active_offers?: any[];
-      total_visits?: number;
-      expiry_days?: number;
-      expiryDays?: number;
-    }>
-  >([]);
+  const [userPasses, setUserPasses] = useState<CustomerPassItem[]>([]);
 
   // Selected Pass ID in Featured Digital Pass Holder (persisted across sessions & tab switches)
   const [selectedPassId, setSelectedPassId] = useState<string>(() => {
@@ -506,10 +530,116 @@ function CustomerPortalContent() {
 
   const passHolderRef = useRef<HTMLDivElement>(null);
 
+  // 1. Resolve currentStore slug first:
+  const activeStoreSlug = useMemo(() => {
+    if (storeParam) return storeParam;
+    if (selectedPassSlug) return selectedPassSlug;
+    if (userPasses.length > 0) return userPasses[0].slug;
+    return null;
+  }, [storeParam, selectedPassSlug, userPasses]);
+
+  // 2. Resolve currentStore from businesses or local pass or instant fallback
+  const currentStore = useMemo(() => {
+    if (!activeStoreSlug) return null;
+    const fromBiz = businesses.find((b) => b.slug === activeStoreSlug || b.id === activeStoreSlug);
+    if (fromBiz) return fromBiz;
+
+    const fromPass = userPasses.find((p) => p.slug === activeStoreSlug || p.businessId === activeStoreSlug);
+    if (fromPass) {
+      return {
+        id: fromPass.businessId || fromPass.slug,
+        slug: fromPass.slug,
+        name: fromPass.name,
+        category: fromPass.category,
+        brand_color: fromPass.brandColor,
+        logo_url: fromPass.logo_url,
+        reward_rule: fromPass.reward_rule,
+        active_offers: fromPass.active_offers || [],
+        theme_config: fromPass.theme_config,
+      } as BusinessItem;
+    }
+
+    if (storeParam && activeStoreSlug === storeParam) {
+      const cleanName = storeParam
+        .replace(/-[a-z0-9]{4}$/i, '')
+        .replace(/-/g, ' ')
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+      return {
+        id: storeParam,
+        slug: storeParam,
+        name: cleanName,
+        category: 'Café & Beverage',
+        brand_color: '#0F172A',
+        reward_rule: {
+          stamps_needed: 6,
+          reward_title: '',
+        },
+        active_offers: [],
+      } as unknown as BusinessItem;
+    }
+    return null;
+  }, [activeStoreSlug, businesses, userPasses, storeParam]);
+
+  // 3. Synthesize preview pass for owner preview mode (test=1 / preview=1)
+  const previewPass = useMemo<CustomerPassItem | null>(() => {
+    if (!isPreviewMode || !currentStore) return null;
+    return {
+      id: `preview_${currentStore.slug}`,
+      slug: currentStore.slug,
+      name: currentStore.name,
+      category: currentStore.category || 'Specialty Cafe & Beverage',
+      brandColor: currentStore.brand_color || '#0F172A',
+      logo_url: currentStore.logo_url,
+      stamps: 0,
+      totalStamps: currentStore.reward_rule?.stamps_needed || 6,
+      rewardTitle: currentStore.reward_rule?.reward_title || 'Store Reward',
+      lastVisit: 'Preview Mode',
+      active_offers: currentStore.active_offers || [],
+      theme_config: currentStore.theme_config,
+      reward_rule: currentStore.reward_rule,
+      address: currentStore.address || '',
+      area: currentStore.area || '',
+      city: currentStore.city || '',
+      phone: currentStore.phone || '',
+      googleReviewUrl: currentStore.reward_rule?.google_review_url || '',
+      instagram_url: currentStore.reward_rule?.instagram_url || '',
+      joined_at: new Date().toISOString(),
+      rewardId: 'primary',
+      businessId: currentStore.id || currentStore.slug,
+      expiry_days: currentStore.reward_rule?.expiry_days,
+      last_qr_stamp_at: undefined,
+    };
+  }, [isPreviewMode, currentStore]);
+
+  // 4. selectedPass cleanly resolves with ZERO circularity
   const selectedPass = useMemo(() => {
+    if (storeParam) {
+      const passesForStore = userPasses.filter(
+        (p: any) => p.slug === storeParam || p.businessId === storeParam
+      );
+      if (passesForStore.length > 0) {
+        if (selectedPassId) {
+          const match = passesForStore.find((p: any, idx: number) => {
+            const key = getPassKey(p, idx);
+            return (
+              key === selectedPassId ||
+              (p.id && String(p.id) === selectedPassId) ||
+              (p.rewardId && `${p.slug}_${p.rewardId}` === selectedPassId)
+            );
+          });
+          if (match) return match;
+        }
+        return passesForStore[0];
+      }
+      if (isPreviewMode && previewPass) {
+        return previewPass;
+      }
+      // Never fall back to userPasses[0] when a storeParam is in URL!
+      return null;
+    }
+
     if (userPasses.length === 0) return null;
 
-    // 1. Precise match by unique pass ID / key (handles multiple passes under same business/slug like CHAI vs Coffee!)
     if (selectedPassId) {
       const matchById = userPasses.find((p: any, idx: number) => {
         const key = getPassKey(p, idx);
@@ -522,16 +652,13 @@ function CustomerPortalContent() {
       if (matchById) return matchById;
     }
 
-    // 2. If no matching ID, match by storeParam or selectedPassSlug
-    const targetSlug = storeParam || selectedPassSlug;
-    if (targetSlug) {
-      const matchBySlug = userPasses.find((p: any) => p.slug === targetSlug);
+    if (selectedPassSlug) {
+      const matchBySlug = userPasses.find((p: any) => p.slug === selectedPassSlug);
       if (matchBySlug) return matchBySlug;
     }
 
-    // 3. Fallback to first pass
     return userPasses[0];
-  }, [userPasses, selectedPassId, selectedPassSlug, storeParam]);
+  }, [userPasses, selectedPassId, selectedPassSlug, storeParam, isPreviewMode, previewPass]);
 
   useEffect(() => {
     if (storeParam) {
@@ -605,28 +732,6 @@ function CustomerPortalContent() {
     }, 50);
   };
 
-  // Resolve the customer's current registered cafe/store
-  const currentStore = useMemo(() => {
-    const slug = selectedPass?.slug || (userPasses.length > 0 ? userPasses[0].slug : null);
-    if (!slug) return null;
-    const fromBiz = businesses.find((b) => b.slug === slug);
-    if (fromBiz) return fromBiz;
-    if (selectedPass) {
-      return {
-        id: selectedPass.businessId || selectedPass.slug,
-        slug: selectedPass.slug,
-        name: selectedPass.name,
-        category: selectedPass.category,
-        brand_color: selectedPass.brandColor,
-        logo_url: selectedPass.logo_url,
-        reward_rule: selectedPass.reward_rule,
-        active_offers: selectedPass.active_offers || [],
-        theme_config: selectedPass.theme_config,
-      } as BusinessItem;
-    }
-    return null;
-  }, [selectedPass, userPasses, businesses]);
-
   // Dynamically resolve the active pass's specific stamp validity / expiry days
   const activePassExpiryDays = useMemo(() => {
     if (!selectedPass) return null;
@@ -677,7 +782,7 @@ function CustomerPortalContent() {
 
   // Unstarted rewards belonging EXCLUSIVELY to the current cafe/store
   const availableStoreRewardsToStart = useMemo(() => {
-    if (!currentStore) return [];
+    if (!currentStore || !isStoreRewardActive(currentStore)) return [];
     const rewards: Array<{
       id: string;
       title: string;
@@ -687,8 +792,15 @@ function CustomerPortalContent() {
       min_order?: number;
     }> = [];
 
-    // Primary reward
-    if (currentStore.reward_rule?.reward_title) {
+    // Primary reward (only if store has custom title or active offers)
+    const hasCustomTitle = Boolean(
+      currentStore.reward_rule?.reward_title &&
+      currentStore.reward_rule?.reward_title.trim() &&
+      currentStore.reward_rule?.reward_title.trim().toLowerCase() !== 'free specialty beverage'
+    );
+    const hasActiveOffers = (currentStore.active_offers || []).length > 0;
+
+    if (currentStore.reward_rule && (hasCustomTitle || (hasActiveOffers && currentStore.reward_rule.reward_title))) {
       rewards.push({
         id: 'primary',
         title: currentStore.reward_rule.reward_title,
@@ -701,7 +813,7 @@ function CustomerPortalContent() {
 
     // Additional active offers
     const offers = (currentStore.active_offers || []).filter(
-      (o) => o.title !== currentStore.reward_rule?.reward_title
+      (o) => o && o.title !== currentStore.reward_rule?.reward_title
     );
     for (const o of offers) {
       rewards.push({
@@ -920,7 +1032,7 @@ function CustomerPortalContent() {
             }
             const savedSelected = localStorage.getItem('reva_selected_pass_slug');
             const exists = parsed.some((p: any) => p.slug === savedSelected);
-            const activeSlug = exists && savedSelected ? savedSelected : parsed[0].slug;
+            const activeSlug = storeParam || (exists && savedSelected ? savedSelected : parsed[0].slug);
             setSelectedPassSlug(activeSlug);
             try { localStorage.setItem('reva_selected_pass_slug', activeSlug); } catch {}
           }
@@ -1099,8 +1211,9 @@ function CustomerPortalContent() {
                     }
                   }
                   setSelectedPassSlug((prev) => {
+                    if (storeParam) return storeParam;
                     const savedSelected = localStorage.getItem('reva_selected_pass_slug');
-                    const candidate = storeParam || prev || savedSelected || '';
+                    const candidate = prev || savedSelected || '';
                     const exists = sessionData.passes.some((p: any) => p.slug === candidate);
                     const chosen = exists && candidate ? candidate : sessionData.passes[0].slug;
                     try { localStorage.setItem('reva_selected_pass_slug', chosen); } catch {}
@@ -1467,10 +1580,31 @@ function CustomerPortalContent() {
     async function fetchBusinesses() {
       try {
         setLoadingBusinesses(true);
+        if (storeParam) {
+          fetch(`/api/businesses/${encodeURIComponent(storeParam)}`)
+            .then((r) => r.json())
+            .then((d) => {
+              if (d.success && d.business) {
+                setBusinesses((prev) => {
+                  const filtered = prev.filter((b) => b.slug !== d.business.slug && b.id !== d.business.id);
+                  return [d.business, ...filtered];
+                });
+              }
+            })
+            .catch(() => {});
+        }
+
         const res = await fetch('/api/businesses');
         const data = await res.json();
         if (data.success && Array.isArray(data.businesses)) {
-          setBusinesses(data.businesses);
+          setBusinesses((prev) => {
+            const map = new Map<string, any>();
+            data.businesses.forEach((b: any) => map.set(b.slug, b));
+            prev.forEach((b: any) => {
+              if (!map.has(b.slug)) map.set(b.slug, b);
+            });
+            return Array.from(map.values());
+          });
         }
       } catch {
         // Fallback default businesses
@@ -1479,19 +1613,62 @@ function CustomerPortalContent() {
       }
     }
     fetchBusinesses();
-  }, []);
+  }, [storeParam]);
 
   // Auto-prompt join pass if user visited with a specific store parameter and does not have the pass yet
   useEffect(() => {
-    if (!storeParam || loadingBusinesses || businesses.length === 0) return;
-    const hasPass = userPasses.some((p: any) => p.slug === storeParam);
+    if (!storeParam || isPreviewMode) return;
+    const hasPass = userPasses.some((p: any) => p.slug === storeParam || p.businessId === storeParam);
     if (!hasPass) {
-      const targetBiz = businesses.find((b: any) => b.slug === storeParam);
+      const targetBiz = businesses.find((b: any) => b.slug === storeParam) || (currentStore?.slug === storeParam ? currentStore : null);
       if (targetBiz && !joiningBusiness) {
-        setJoiningBusiness(targetBiz);
+        const existingPhone = customerPhone || (typeof window !== 'undefined' ? localStorage.getItem('reva_customer_phone') : '');
+        const existingName = customerName || (typeof window !== 'undefined' ? localStorage.getItem('reva_customer_name') : '');
+        if (existingPhone && existingName && existingPhone.replace(/\D/g, '').length >= 10 && existingName !== 'Valued Guest') {
+          // Customer already registered (e.g. Saurav), silently join in background so they never see a login prompt!
+          fetch('/api/customer/session', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              businessSlug: storeParam,
+              phone: existingPhone,
+              name: existingName,
+            }),
+          })
+            .then((r) => r.json())
+            .then((d) => {
+              if (d.success && d.membership) {
+                const newPass: CustomerPassItem = {
+                  id: d.membership.id,
+                  slug: targetBiz.slug,
+                  name: targetBiz.name,
+                  category: targetBiz.category || 'Specialty Cafe',
+                  brandColor: targetBiz.brand_color || '#0F172A',
+                  logo_url: targetBiz.logo_url,
+                  stamps: d.membership.stamps || 0,
+                  totalStamps: targetBiz.reward_rule?.stamps_needed || 6,
+                  rewardTitle: targetBiz.reward_rule?.reward_title || 'Reward',
+                  lastVisit: 'Just now',
+                  theme_config: targetBiz.theme_config,
+                  reward_rule: targetBiz.reward_rule,
+                  active_offers: targetBiz.active_offers || [],
+                };
+                setUserPasses((prev) => [newPass, ...prev.filter((p) => p.slug !== newPass.slug)]);
+                setSelectedPassSlug(newPass.slug);
+                setSelectedPassId(getPassKey(newPass));
+                return;
+              }
+              setJoiningBusiness(targetBiz);
+            })
+            .catch(() => {
+              setJoiningBusiness(targetBiz);
+            });
+        } else {
+          setJoiningBusiness(targetBiz);
+        }
       }
     }
-  }, [storeParam, businesses, userPasses, loadingBusinesses, joiningBusiness]);
+  }, [storeParam, businesses, userPasses, currentStore, joiningBusiness, isPreviewMode, customerPhone, customerName]);
 
   // Categories for Explore Tab
   const categories = ['All', 'Café & Beverage', 'Bakery & Deli', 'Fashion & Boutique', 'Salon & Spa', 'Fragrance & Lifestyle'];
@@ -2427,126 +2604,144 @@ function CustomerPortalContent() {
                       </span>
                     </div>
 
-                    {/* Stamp Card Punch Grid */}
-                    <div className="bg-black/25 backdrop-blur-md rounded-2xl p-4 border border-white/15 mb-4">
-                      <div className="flex items-center justify-between mb-3 text-xs font-semibold">
-                        <span className="text-white/90">Digital Stamp Card</span>
-                        <span className="bg-white/20 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold text-white">
-                          {selectedPass.stamps} of {selectedPass.totalStamps} collected
-                        </span>
-                      </div>
-
-                      {/* Stamp Grid (Fixed Slot Size & Centered with Equal Side Gaps) */}
-                      <div className="flex items-center justify-center flex-wrap gap-2 sm:gap-2.5 py-1 min-h-[58px]">
-                        {Array.from({ length: selectedPass.totalStamps }).map((_, idx) => {
-                          const isStamped = idx < selectedPass.stamps;
-                          const isNext = idx === selectedPass.stamps;
-                          const isRewardSlot = idx === selectedPass.totalStamps - 1;
-
-                          return (
-                            <div
-                              key={idx}
-                              onClick={() => {
-                                sound.playStampPop();
-                              }}
-                              className={`aspect-square rounded-2xl flex flex-col items-center justify-center relative transition-all duration-300 cursor-pointer shrink-0 ${
-                                isStamped
-                                  ? 'bg-white text-slate-900 shadow-lg scale-100'
-                                  : isNext
-                                  ? 'border-2 border-dashed border-white/90 bg-white/20 scale-95 ring-2 ring-white/30'
-                                  : 'border-2 border-dashed border-white/30 bg-black/10 opacity-60'
-                              }`}
-                              style={{
-                                width: 'clamp(44px, calc((100% - 40px) / 6), 54px)',
-                                height: 'clamp(44px, calc((100% - 40px) / 6), 54px)',
-                              }}
-                            >
-                              {renderStampIconSymbol(passStampIcon, isStamped, isRewardSlot, passTheme?.accent_color || selectedPass.brandColor)}
-
-                              {isStamped ? (
-                                <span className="text-[7px] font-mono font-bold tracking-tighter uppercase text-slate-600 mt-0.5">
-                                  STAMPED
-                                </span>
-                              ) : isNext ? (
-                                <span className="text-[7px] font-mono font-bold tracking-tighter uppercase text-amber-300 mt-0.5">
-                                  NEXT
-                                </span>
-                              ) : isRewardSlot ? (
-                                <span className="text-[7px] font-mono font-bold tracking-tighter uppercase text-amber-300 mt-0.5">
-                                  REWARD
-                                </span>
-                              ) : null}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* Reward Banner / Status Action */}
-                    {selectedPass.stamps >= selectedPass.totalStamps ? (
-                      <div className="bg-amber-400 text-slate-950 rounded-2xl p-3.5 flex items-center justify-between gap-2 shadow-md">
-                        <div className="min-w-0">
-                          <div className="text-[10px] font-mono uppercase font-bold tracking-wider text-slate-800">
-                            🎉 Reward Unlocked
-                          </div>
-                          <div className="text-xs font-bold truncate">{selectedPass.rewardTitle}</div>
+                    {/* Stamp Card Punch Grid or No Active Rewards State */}
+                    {!isStoreRewardActive(selectedPass) ? (
+                      <div className="bg-black/30 backdrop-blur-md rounded-2xl p-5 border border-white/20 text-center space-y-2.5 my-3">
+                        <div className="w-10 h-10 rounded-xl bg-white/15 text-amber-300 flex items-center justify-center mx-auto border border-white/20">
+                          <Gift className="w-5 h-5 text-amber-300" />
                         </div>
-                        <button
-                          onClick={() =>
-                            handleClaimVoucher({
-                              id: `pass_rw_${selectedPass.slug}`,
-                              businessName: selectedPass.name,
-                              businessSlug: selectedPass.slug,
-                              brandColor: selectedPass.brandColor,
-                              rewardTitle: selectedPass.rewardTitle,
-                              stamps: selectedPass.stamps,
-                              totalNeeded: selectedPass.totalStamps,
-                              expiry: activePassRemainingDays !== null
-                                ? activePassRemainingDays > 1
-                                  ? `Expires in ${activePassRemainingDays} days`
-                                  : activePassRemainingDays === 1
-                                  ? 'Expires tomorrow'
-                                  : 'Expires today'
-                                : activePassExpiryDays
-                                ? `Expires in ${activePassExpiryDays} days`
-                                : selectedPass.reward_rule?.expiry_days
-                                ? `Expires in ${selectedPass.reward_rule.expiry_days} days`
-                                : 'Expires in 30 days',
-                            })
-                          }
-                          className="px-3.5 py-1.5 rounded-xl bg-slate-950 hover:bg-black text-white font-display font-bold text-xs shadow-xs shrink-0 cursor-pointer active:scale-95 transition-all"
-                        >
-                          Claim Reward
-                        </button>
+                        <div className="space-y-1">
+                          <h4 className="font-display font-bold text-sm text-white">
+                            There are no active rewards for this cafe right now.
+                          </h4>
+                          <p className="text-[11px] text-white/75 leading-relaxed max-w-xs mx-auto">
+                            This cafe has not launched any active reward campaigns yet. Check back soon or ask at the counter!
+                          </p>
+                        </div>
                       </div>
                     ) : (
-                      <div className="space-y-2">
-                        <div className="bg-white/10 backdrop-blur-md rounded-2xl p-3 flex items-center justify-between gap-2 text-xs border border-white/15">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <Sparkles className="w-4 h-4 text-amber-300 shrink-0" />
-                            <span className="truncate">
-                              <b>{selectedPass.totalStamps - selectedPass.stamps} more stamps</b> to {selectedPass.rewardTitle}
+                      <>
+                        <div className="bg-black/25 backdrop-blur-md rounded-2xl p-4 border border-white/15 mb-4">
+                          <div className="flex items-center justify-between mb-3 text-xs font-semibold">
+                            <span className="text-white/90">Digital Stamp Card</span>
+                            <span className="bg-white/20 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold text-white">
+                              {selectedPass.stamps} of {selectedPass.totalStamps} collected
                             </span>
+                          </div>
+
+                          {/* Stamp Grid (Fixed Slot Size & Centered with Equal Side Gaps) */}
+                          <div className="flex items-center justify-center flex-wrap gap-2 sm:gap-2.5 py-1 min-h-[58px]">
+                            {Array.from({ length: selectedPass.totalStamps }).map((_, idx) => {
+                              const isStamped = idx < selectedPass.stamps;
+                              const isNext = idx === selectedPass.stamps;
+                              const isRewardSlot = idx === selectedPass.totalStamps - 1;
+
+                              return (
+                                <div
+                                  key={idx}
+                                  onClick={() => {
+                                    sound.playStampPop();
+                                  }}
+                                  className={`aspect-square rounded-2xl flex flex-col items-center justify-center relative transition-all duration-300 cursor-pointer shrink-0 ${
+                                    isStamped
+                                      ? 'bg-white text-slate-900 shadow-lg scale-100'
+                                      : isNext
+                                      ? 'border-2 border-dashed border-white/90 bg-white/20 scale-95 ring-2 ring-white/30'
+                                      : 'border-2 border-dashed border-white/30 bg-black/10 opacity-60'
+                                  }`}
+                                  style={{
+                                    width: 'clamp(44px, calc((100% - 40px) / 6), 54px)',
+                                    height: 'clamp(44px, calc((100% - 40px) / 6), 54px)',
+                                  }}
+                                >
+                                  {renderStampIconSymbol(passStampIcon, isStamped, isRewardSlot, passTheme?.accent_color || selectedPass.brandColor)}
+
+                                  {isStamped ? (
+                                    <span className="text-[7px] font-mono font-bold tracking-tighter uppercase text-slate-600 mt-0.5">
+                                      STAMPED
+                                    </span>
+                                  ) : isNext ? (
+                                    <span className="text-[7px] font-mono font-bold tracking-tighter uppercase text-amber-300 mt-0.5">
+                                      NEXT
+                                    </span>
+                                  ) : isRewardSlot ? (
+                                    <span className="text-[7px] font-mono font-bold tracking-tighter uppercase text-amber-300 mt-0.5">
+                                      REWARD
+                                    </span>
+                                  ) : null}
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
-                        {Boolean(activePassExpiryDays && activePassExpiryDays > 0) && (
-                          <div className="text-[10px] text-white/80 font-mono flex items-center justify-between px-1">
-                            <span className="flex items-center gap-1">
-                              <Clock className="w-3 h-3 text-amber-300 shrink-0" />
-                              <span>Stamps validity:</span>
-                            </span>
-                            <span className="font-bold text-amber-200">
-                              {activePassRemainingDays !== null
-                                ? activePassRemainingDays > 1
-                                  ? `${activePassRemainingDays} days to complete`
-                                  : activePassRemainingDays === 1
-                                  ? '1 day left • Expires tomorrow'
-                                  : 'Expires today'
-                                : `${activePassExpiryDays} days to complete`}
-                            </span>
+
+                        {/* Reward Banner / Status Action */}
+                        {selectedPass.stamps >= selectedPass.totalStamps ? (
+                          <div className="bg-amber-400 text-slate-950 rounded-2xl p-3.5 flex items-center justify-between gap-2 shadow-md">
+                            <div className="min-w-0">
+                              <div className="text-[10px] font-mono uppercase font-bold tracking-wider text-slate-800">
+                                🎉 Reward Unlocked
+                              </div>
+                              <div className="text-xs font-bold truncate">{selectedPass.rewardTitle}</div>
+                            </div>
+                            <button
+                              onClick={() =>
+                                handleClaimVoucher({
+                                  id: `pass_rw_${selectedPass.slug}`,
+                                  businessName: selectedPass.name,
+                                  businessSlug: selectedPass.slug,
+                                  brandColor: selectedPass.brandColor,
+                                  rewardTitle: selectedPass.rewardTitle,
+                                  stamps: selectedPass.stamps,
+                                  totalNeeded: selectedPass.totalStamps,
+                                  expiry: activePassRemainingDays !== null
+                                    ? activePassRemainingDays > 1
+                                      ? `Expires in ${activePassRemainingDays} days`
+                                      : activePassRemainingDays === 1
+                                      ? 'Expires tomorrow'
+                                      : 'Expires today'
+                                    : activePassExpiryDays
+                                    ? `Expires in ${activePassExpiryDays} days`
+                                    : selectedPass.reward_rule?.expiry_days
+                                    ? `Expires in ${selectedPass.reward_rule.expiry_days} days`
+                                    : 'Expires in 30 days',
+                                })
+                              }
+                              className="px-3.5 py-1.5 rounded-xl bg-slate-950 hover:bg-black text-white font-display font-bold text-xs shadow-xs shrink-0 cursor-pointer active:scale-95 transition-all"
+                            >
+                              Claim Reward
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            <div className="bg-white/10 backdrop-blur-md rounded-2xl p-3 flex items-center justify-between gap-2 text-xs border border-white/15">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <Sparkles className="w-4 h-4 text-amber-300 shrink-0" />
+                                <span className="truncate">
+                                  <b>{selectedPass.totalStamps - selectedPass.stamps} more stamps</b> to {selectedPass.rewardTitle}
+                                </span>
+                              </div>
+                            </div>
+                            {Boolean(activePassExpiryDays && activePassExpiryDays > 0) && (
+                              <div className="text-[10px] text-white/80 font-mono flex items-center justify-between px-1">
+                                <span className="flex items-center gap-1">
+                                  <Clock className="w-3 h-3 text-amber-300 shrink-0" />
+                                  <span>Stamps validity:</span>
+                                </span>
+                                <span className="font-bold text-amber-200">
+                                  {activePassRemainingDays !== null
+                                    ? activePassRemainingDays > 1
+                                      ? `${activePassRemainingDays} days to complete`
+                                      : activePassRemainingDays === 1
+                                      ? '1 day left • Expires tomorrow'
+                                      : 'Expires today'
+                                    : `${activePassExpiryDays} days to complete`}
+                                </span>
+                              </div>
+                            )}
                           </div>
                         )}
-                      </div>
+                      </>
                     )}
 
                   {/* Review us on Google & Instagram / Pass Footer */}
@@ -2610,24 +2805,39 @@ function CustomerPortalContent() {
                   </div>
                   <div className="space-y-1.5 max-w-sm mx-auto">
                     <h3 className="font-display font-bold text-lg text-slate-900 dark:text-white">
-                      Activate Your First Loyalty Card
+                      {currentStore ? `Join ${currentStore.name}'s Loyalty Pass` : 'Activate Your First Loyalty Card'}
                     </h3>
                     <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                      You don&apos;t have any active store passes yet. Scan a store QR code or select any partner store below to collect digital stamps and earn free rewards!
+                      {currentStore
+                        ? `Get exclusive digital stamps & unlock rewards whenever you visit ${currentStore.name}.`
+                        : "You don't have any active store passes yet. Scan a store QR code or select any partner store below to collect digital stamps and earn free rewards!"}
                     </p>
                   </div>
                   <div className="pt-1">
-                    <button
-                      onClick={() => {
-                        sound.playClick();
-                        setShowScannerModal(true);
-                      }}
-                      className="w-full sm:w-auto px-6 py-3 rounded-full bg-[#0F172A] hover:bg-black dark:bg-white dark:hover:bg-slate-100 text-white dark:text-black font-display font-bold text-xs shadow-md transition-all cursor-pointer inline-flex items-center justify-center gap-2 group active:scale-98"
-                    >
-                      <QrCode className="w-4 h-4 text-emerald-400 dark:text-emerald-600" />
-                      <span>Scan Store QR to Join</span>
-                      <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
-                    </button>
+                    {currentStore ? (
+                      <button
+                        onClick={() => {
+                          handleOpenJoinModal(currentStore);
+                        }}
+                        className="w-full sm:w-auto px-6 py-3 rounded-full bg-[#0F172A] hover:bg-black dark:bg-white dark:hover:bg-slate-100 text-white dark:text-black font-display font-bold text-xs shadow-md transition-all cursor-pointer inline-flex items-center justify-center gap-2 group active:scale-98"
+                      >
+                        <Sparkles className="w-4 h-4 text-amber-400" />
+                        <span>Join {currentStore.name} Pass</span>
+                        <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          sound.playClick();
+                          setShowScannerModal(true);
+                        }}
+                        className="w-full sm:w-auto px-6 py-3 rounded-full bg-[#0F172A] hover:bg-black dark:bg-white dark:hover:bg-slate-100 text-white dark:text-black font-display font-bold text-xs shadow-md transition-all cursor-pointer inline-flex items-center justify-center gap-2 group active:scale-98"
+                      >
+                        <QrCode className="w-4 h-4 text-emerald-400 dark:text-emerald-600" />
+                        <span>Scan Store QR to Join</span>
+                        <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
@@ -2778,6 +2988,20 @@ function CustomerPortalContent() {
                 >
                   <p className="text-xs text-slate-500">
                     Scan a store QR code to activate your first pass.
+                  </p>
+                </div>
+              ) : !isStoreRewardActive(currentStore) ? (
+                <div
+                  className={`rounded-2xl p-4 text-center border space-y-1 ${
+                    isDarkMode ? 'bg-slate-900/40 border-slate-800' : 'bg-slate-50 border-slate-200'
+                  }`}
+                >
+                  <div className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center justify-center gap-1.5">
+                    <Gift className="w-4 h-4 text-amber-500" />
+                    <span>There are no active rewards for this cafe right now.</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 pt-0.5">
+                    {currentStore.name} has not launched any active reward campaigns yet.
                   </p>
                 </div>
               ) : availableStoreRewardsToStart.length === 0 ? (
