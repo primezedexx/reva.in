@@ -18,8 +18,10 @@ export async function POST(req: NextRequest) {
       businessId: explicitBusinessId,
       slug,
       businessSlug,
-      phone,
-      name,
+      phone: rawPhone,
+      name: rawName,
+      customerPhone,
+      customerName,
       membershipId: explicitMemId,
       spendAmount,
       stampAwarded = 1,
@@ -29,6 +31,8 @@ export async function POST(req: NextRequest) {
     } = body;
 
     const resolvedSlug = (slug || businessSlug || '').trim();
+    const phone = (rawPhone || customerPhone || '').trim();
+    const name = (rawName || customerName || '').trim();
     let targetBusiness = null;
 
     if (resolvedSlug) {
@@ -57,15 +61,13 @@ export async function POST(req: NextRequest) {
         o &&
         o.id !== 'off_1' &&
         o.title !== 'Welcome Treat' &&
-        o.title !== 'Welcome Milestone Reward' &&
-        !(o.id === 'off_2' && o.title === 'Free Specialty Beverage')
+        o.title !== 'Welcome Milestone Reward'
     );
     const hasCustomActiveReward =
       activeOffers.length > 0 ||
       Boolean(
         targetBusiness?.reward_rule?.reward_title &&
-        targetBusiness?.reward_rule?.reward_title !== 'Free Specialty Beverage' &&
-        targetBusiness?.reward_rule?.is_setup_completed
+        targetBusiness.reward_rule.reward_title.trim().length > 0
       );
 
     if (!hasCustomActiveReward) {
