@@ -600,7 +600,7 @@ class RevaDatabase {
       if (!error && data) {
         const list = data.map((b) => this.ensureBusinessOffers(b));
         if (onlyPublished) {
-          return list.filter((b) => b.is_setup_completed === true);
+          return list.filter((b) => b.is_setup_completed === true || b.reward_rule?.is_setup_completed === true);
         }
         return list;
       }
@@ -609,7 +609,7 @@ class RevaDatabase {
     }
     const inMem = this.businesses.map((b) => this.ensureBusinessOffers(b));
     if (onlyPublished) {
-      return inMem.filter((b) => b.is_setup_completed === true);
+      return inMem.filter((b) => b.is_setup_completed === true || b.reward_rule?.is_setup_completed === true);
     }
     return inMem;
   }
@@ -747,6 +747,8 @@ class RevaDatabase {
     // Unpack extra metadata safely stored in reward_rule JSONB
     if (b.reward_rule) {
       const rr = b.reward_rule as any;
+      if (rr.is_setup_completed !== undefined) b.is_setup_completed = rr.is_setup_completed;
+      if (rr.logo_url !== undefined && !b.logo_url) b.logo_url = rr.logo_url;
       if (rr.theme_config) b.theme_config = { ...(b.theme_config || {}), ...rr.theme_config };
       if (rr.category !== undefined) b.category = rr.category;
       if (rr.city !== undefined) b.city = rr.city;

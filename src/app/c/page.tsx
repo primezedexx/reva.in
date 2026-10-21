@@ -160,7 +160,7 @@ interface ClaimedReward {
 function getBusinessLogo(name: string, category?: string, logoUrl?: string): string {
   if (logoUrl && logoUrl.trim().length > 0) return logoUrl;
   const lower = (name + ' ' + (category || '')).toLowerCase();
-  if (lower.includes('matcha') || lower.includes('tea')) {
+  if (lower.includes('chai') || lower.includes('sutta') || lower.includes('kulhad') || lower.includes('tapri') || lower.includes('matcha') || lower.includes('tea')) {
     return 'https://images.unsplash.com/photo-1576092768241-dec231879fc3?w=300&auto=format&fit=crop&q=80';
   }
   if (lower.includes('boba') || lower.includes('brew')) {
@@ -185,6 +185,17 @@ function getBusinessLogo(name: string, category?: string, logoUrl?: string): str
     return 'https://images.unsplash.com/photo-1615397349754-cfa2066a298e?w=300&auto=format&fit=crop&q=80';
   }
   return 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=300&auto=format&fit=crop&q=80';
+}
+
+export function cleanBizName(name?: string | null): string {
+  if (!name) return 'Local Store';
+  return name.replace(/\s*\|\s*$/, '').trim();
+}
+
+export function isMerchantAdminEmail(e: string | null | undefined): boolean {
+  if (!e) return false;
+  const lower = e.trim().toLowerCase();
+  return lower.includes('primezedexx') || lower.includes('owner') || lower.endsWith('@reva.in');
 }
 
 // Lively Member Since & Registration Logic Formatter
@@ -388,12 +399,11 @@ export function isStoreRewardActive(storeOrPass: any): boolean {
       o &&
       o.id !== 'off_1' &&
       o.title !== 'Welcome Treat' &&
-      o.title !== 'Welcome Milestone Reward' &&
-      !(o.id === 'off_2' && o.title === 'Free Specialty Beverage')
+      o.title !== 'Welcome Milestone Reward'
   );
   if (filteredOffers.length > 0) return true;
   const title = (storeOrPass.rewardTitle || storeOrPass.reward_rule?.reward_title || '').trim();
-  if (title && title.toLowerCase() !== 'free specialty beverage') {
+  if (title && title.length > 0) {
     return true;
   }
   return false;
@@ -423,12 +433,60 @@ function CustomerPortalContent() {
   }, [initialTab]);
 
   // Customer Profile State (persisted in localStorage & DB)
-  const [customerName, setCustomerName] = useState('Valued Guest');
-  const [customerPhone, setCustomerPhone] = useState('');
-  const [customerEmail, setCustomerEmail] = useState('');
-  const [customerAvatar, setCustomerAvatar] = useState<string | null>(null);
-  const [registeredAt, setRegisteredAt] = useState<string>('');
+  const [customerName, setCustomerName] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('reva_customer_name');
+        if (saved && saved !== 'Aarav Sharma') return saved;
+      } catch {}
+    }
+    return 'Valued Guest';
+  });
+
+  const [customerPhone, setCustomerPhone] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('reva_customer_phone');
+        if (saved && saved !== '+91 98765 43210' && saved !== '9876543210') return saved;
+        if (typeof document !== 'undefined') {
+          const match = document.cookie.match(/(?:^|;\s*)reva_customer_phone=([^;]+)/);
+          if (match) return decodeURIComponent(match[1]);
+        }
+      } catch {}
+    }
+    return '';
+  });
+
+  const [customerEmail, setCustomerEmail] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('reva_customer_email');
+        if (saved && !isMerchantAdminEmail(saved)) return saved;
+      } catch {}
+    }
+    return '';
+  });
+
+  const [customerAvatar, setCustomerAvatar] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        return localStorage.getItem('reva_customer_avatar') || null;
+      } catch {}
+    }
+    return null;
+  });
+
+  const [registeredAt, setRegisteredAt] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        return localStorage.getItem('reva_customer_registered_at') || '';
+      } catch {}
+    }
+    return '';
+  });
+
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isSessionLoaded, setIsSessionLoaded] = useState(false);
 
   // Profile Edit Modals & Upload State
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
@@ -495,7 +553,18 @@ function CustomerPortalContent() {
   } | null>(null);
 
   // Business List from API with fallback
-  const [businesses, setBusinesses] = useState<BusinessItem[]>([]);
+  const [businesses, setBusinesses] = useState<BusinessItem[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('reva_cached_businesses');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch {}
+    }
+    return [];
+  });
   const [loadingBusinesses, setLoadingBusinesses] = useState(true);
 
   // Join New Pass Modal State (Name & Mobile Number sent to Restaurant Owner in DB)
@@ -505,8 +574,19 @@ function CustomerPortalContent() {
   const [isJoiningSubmitting, setIsJoiningSubmitting] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
 
-  // Customer's Joined Passes (starts empty for new users)
-  const [userPasses, setUserPasses] = useState<CustomerPassItem[]>([]);
+  // Customer's Joined Passes (starts from localStorage cache synchronously)
+  const [userPasses, setUserPasses] = useState<CustomerPassItem[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('reva_customer_passes');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch {}
+    }
+    return [];
+  });
 
   // Selected Pass ID in Featured Digital Pass Holder (persisted across sessions & tab switches)
   const [selectedPassId, setSelectedPassId] = useState<string>(() => {
@@ -542,14 +622,19 @@ function CustomerPortalContent() {
   const currentStore = useMemo(() => {
     if (!activeStoreSlug) return null;
     const fromBiz = businesses.find((b) => b.slug === activeStoreSlug || b.id === activeStoreSlug);
-    if (fromBiz) return fromBiz;
+    if (fromBiz) {
+      return {
+        ...fromBiz,
+        name: cleanBizName(fromBiz.name),
+      };
+    }
 
     const fromPass = userPasses.find((p) => p.slug === activeStoreSlug || p.businessId === activeStoreSlug);
     if (fromPass) {
       return {
         id: fromPass.businessId || fromPass.slug,
         slug: fromPass.slug,
-        name: fromPass.name,
+        name: cleanBizName(fromPass.name),
         category: fromPass.category,
         brand_color: fromPass.brandColor,
         logo_url: fromPass.logo_url,
@@ -560,19 +645,21 @@ function CustomerPortalContent() {
     }
 
     if (storeParam && activeStoreSlug === storeParam) {
-      const cleanName = storeParam
+      const isCsb = storeParam.toLowerCase().includes('beam-ng') || storeParam.toLowerCase().includes('chai');
+      const cleanName = isCsb ? 'Chai Sutta Bar' : storeParam
         .replace(/-[a-z0-9]{4}$/i, '')
         .replace(/-/g, ' ')
         .replace(/\b\w/g, (c) => c.toUpperCase());
       return {
         id: storeParam,
         slug: storeParam,
-        name: cleanName,
+        name: cleanBizName(cleanName),
         category: 'Café & Beverage',
         brand_color: '#0F172A',
+        logo_url: isCsb ? 'https://images.unsplash.com/photo-1576092768241-dec231879fc3?w=300&auto=format&fit=crop&q=80' : undefined,
         reward_rule: {
           stamps_needed: 6,
-          reward_title: '',
+          reward_title: 'Specialty Loyalty Reward',
         },
         active_offers: [],
       } as unknown as BusinessItem;
@@ -932,12 +1019,6 @@ function CustomerPortalContent() {
     setTimeout(() => setUploadToast(null), 3500);
   };
 
-  // Helper to filter out ambient merchant/admin emails
-  const isMerchantAdminEmail = (e: string | null | undefined): boolean => {
-    if (!e) return false;
-    const lower = e.trim().toLowerCase();
-    return lower.includes('primezedexx') || lower.includes('owner') || lower.endsWith('@reva.in');
-  };
 
   // Load Saved Customer Profile, Passes and Claims from localStorage
   useEffect(() => {
@@ -1048,6 +1129,9 @@ function CustomerPortalContent() {
           }
         } catch {}
       }
+
+      // Mark initial synchronous localStorage session load as complete
+      setIsSessionLoaded(true);
 
       // Sync customer phone pass details from backend (pure customer identity, completely isolated from merchant auth)
       const syncCustomerSession = async () => {
@@ -1301,9 +1385,11 @@ function CustomerPortalContent() {
         }
       };
 
-      syncCustomerSession();
+      syncCustomerSession().finally(() => {
+        setIsSessionLoaded(true);
+      });
     } catch {
-      // ignore
+      setIsSessionLoaded(true);
     }
   }, []);
 
@@ -1580,6 +1666,7 @@ function CustomerPortalContent() {
     async function fetchBusinesses() {
       try {
         setLoadingBusinesses(true);
+
         if (storeParam) {
           fetch(`/api/businesses/${encodeURIComponent(storeParam)}`)
             .then((r) => r.json())
@@ -1587,7 +1674,11 @@ function CustomerPortalContent() {
               if (d.success && d.business) {
                 setBusinesses((prev) => {
                   const filtered = prev.filter((b) => b.slug !== d.business.slug && b.id !== d.business.id);
-                  return [d.business, ...filtered];
+                  const updated = [d.business, ...filtered];
+                  try {
+                    localStorage.setItem('reva_cached_businesses', JSON.stringify(updated));
+                  } catch {}
+                  return updated;
                 });
               }
             })
@@ -1597,6 +1688,9 @@ function CustomerPortalContent() {
         const res = await fetch('/api/businesses');
         const data = await res.json();
         if (data.success && Array.isArray(data.businesses)) {
+          try {
+            localStorage.setItem('reva_cached_businesses', JSON.stringify(data.businesses));
+          } catch {}
           setBusinesses((prev) => {
             const map = new Map<string, any>();
             data.businesses.forEach((b: any) => map.set(b.slug, b));
@@ -1617,58 +1711,70 @@ function CustomerPortalContent() {
 
   // Auto-prompt join pass if user visited with a specific store parameter and does not have the pass yet
   useEffect(() => {
-    if (!storeParam || isPreviewMode) return;
+    if (!storeParam || isPreviewMode || !isSessionLoaded) return;
     const hasPass = userPasses.some((p: any) => p.slug === storeParam || p.businessId === storeParam);
-    if (!hasPass) {
-      const targetBiz = businesses.find((b: any) => b.slug === storeParam) || (currentStore?.slug === storeParam ? currentStore : null);
-      if (targetBiz && !joiningBusiness) {
-        const existingPhone = customerPhone || (typeof window !== 'undefined' ? localStorage.getItem('reva_customer_phone') : '');
-        const existingName = customerName || (typeof window !== 'undefined' ? localStorage.getItem('reva_customer_name') : '');
-        if (existingPhone && existingName && existingPhone.replace(/\D/g, '').length >= 10 && existingName !== 'Valued Guest') {
-          // Customer already registered (e.g. Saurav), silently join in background so they never see a login prompt!
-          fetch('/api/customer/session', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              businessSlug: storeParam,
-              phone: existingPhone,
-              name: existingName,
-            }),
+    if (hasPass) {
+      if (joiningBusiness) setJoiningBusiness(null);
+      return;
+    }
+
+    const targetBiz = businesses.find((b: any) => b.slug === storeParam) || (currentStore?.slug === storeParam ? currentStore : null);
+    if (targetBiz && !joiningBusiness) {
+      const existingPhone = customerPhone || (typeof window !== 'undefined' ? localStorage.getItem('reva_customer_phone') : '');
+      const existingName = customerName || (typeof window !== 'undefined' ? localStorage.getItem('reva_customer_name') : '');
+      if (existingPhone && existingPhone.replace(/\D/g, '').length >= 10) {
+        // Customer already registered on device, silently join in background so they never see a login prompt!
+        fetch('/api/customer/session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            businessSlug: storeParam,
+            phone: existingPhone,
+            name: existingName && existingName !== 'Valued Guest' ? existingName : undefined,
+          }),
+        })
+          .then((r) => r.json())
+          .then((d) => {
+            if (d.success && d.membership) {
+              const b = d.business || targetBiz;
+              const newPass: CustomerPassItem = {
+                id: d.membership.id,
+                businessId: b.id || b.slug,
+                slug: b.slug,
+                name: cleanBizName(b.name),
+                category: b.category || 'Specialty Cafe',
+                brandColor: b.brand_color || '#0F172A',
+                logo_url: b.logo_url || targetBiz.logo_url,
+                stamps: d.membership.stamps || 0,
+                totalStamps: b.reward_rule?.stamps_needed || targetBiz.reward_rule?.stamps_needed || 6,
+                rewardTitle: b.reward_rule?.reward_title || targetBiz.reward_rule?.reward_title || 'Reward',
+                lastVisit: 'Just now',
+                theme_config: b.theme_config || targetBiz.theme_config,
+                reward_rule: b.reward_rule || targetBiz.reward_rule,
+                active_offers: b.active_offers || targetBiz.active_offers || [],
+              };
+              setUserPasses((prev) => {
+                const updated = [newPass, ...prev.filter((p) => p.slug !== newPass.slug)];
+                try {
+                  localStorage.setItem('reva_customer_passes', JSON.stringify(updated));
+                } catch {}
+                return updated;
+              });
+              setSelectedPassSlug(newPass.slug);
+              setSelectedPassId(getPassKey(newPass));
+              setJoiningBusiness(null);
+              return;
+            }
+            setJoiningBusiness(targetBiz);
           })
-            .then((r) => r.json())
-            .then((d) => {
-              if (d.success && d.membership) {
-                const newPass: CustomerPassItem = {
-                  id: d.membership.id,
-                  slug: targetBiz.slug,
-                  name: targetBiz.name,
-                  category: targetBiz.category || 'Specialty Cafe',
-                  brandColor: targetBiz.brand_color || '#0F172A',
-                  logo_url: targetBiz.logo_url,
-                  stamps: d.membership.stamps || 0,
-                  totalStamps: targetBiz.reward_rule?.stamps_needed || 6,
-                  rewardTitle: targetBiz.reward_rule?.reward_title || 'Reward',
-                  lastVisit: 'Just now',
-                  theme_config: targetBiz.theme_config,
-                  reward_rule: targetBiz.reward_rule,
-                  active_offers: targetBiz.active_offers || [],
-                };
-                setUserPasses((prev) => [newPass, ...prev.filter((p) => p.slug !== newPass.slug)]);
-                setSelectedPassSlug(newPass.slug);
-                setSelectedPassId(getPassKey(newPass));
-                return;
-              }
-              setJoiningBusiness(targetBiz);
-            })
-            .catch(() => {
-              setJoiningBusiness(targetBiz);
-            });
-        } else {
-          setJoiningBusiness(targetBiz);
-        }
+          .catch(() => {
+            setJoiningBusiness(targetBiz);
+          });
+      } else {
+        setJoiningBusiness(targetBiz);
       }
     }
-  }, [storeParam, businesses, userPasses, currentStore, joiningBusiness, isPreviewMode, customerPhone, customerName]);
+  }, [storeParam, businesses, userPasses, currentStore, joiningBusiness, isPreviewMode, customerPhone, customerName, isSessionLoaded]);
 
   // Categories for Explore Tab
   const categories = ['All', 'Café & Beverage', 'Bakery & Deli', 'Fashion & Boutique', 'Salon & Spa', 'Fragrance & Lifestyle'];
@@ -2355,6 +2461,7 @@ function CustomerPortalContent() {
         localStorage.setItem('reva_customer_name', name);
         localStorage.setItem('reva_customer_phone', phone);
         localStorage.setItem(`reva_phone_${joiningBusiness.slug}`, phone);
+        document.cookie = `reva_customer_phone=${encodeURIComponent(phone)}; path=/; max-age=31536000; SameSite=Lax`;
       } catch {
         // ignore
       }
@@ -2378,10 +2485,13 @@ function CustomerPortalContent() {
       };
 
       const newPass = {
+        id: mem?.id || `${targetBiz.slug}_primary`,
+        businessId: targetBiz.id || targetBiz.slug,
         slug: targetBiz.slug,
-        name: targetBiz.name,
+        name: cleanBizName(targetBiz.name),
         category: targetBiz.category || joiningBusiness.category,
         brandColor: targetBiz.brand_color || joiningBusiness.brand_color || '#0F172A',
+        logo_url: targetBiz.logo_url || joiningBusiness.logo_url || (targetBiz.theme_config as any)?.logo_url || '',
         stamps: mem?.stamps || 0,
         totalStamps: stampsNeeded,
         rewardTitle: targetBiz.reward_rule?.reward_title || 'Specialty Loyalty Reward',

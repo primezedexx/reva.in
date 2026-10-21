@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const email = searchParams.get('email');
-    const phone = searchParams.get('phone');
+    const phone = searchParams.get('phone') || req.cookies.get('reva_customer_phone')?.value;
     const userId = searchParams.get('userId');
     const name = searchParams.get('name');
 
@@ -319,7 +319,7 @@ export async function POST(req: NextRequest) {
     });
     const claimedRewards = Array.from(allClaimsMap.values());
 
-    return NextResponse.json(
+    const res = NextResponse.json(
       {
         success: true,
         business: db.ensureBusinessOffers(business),
@@ -338,6 +338,14 @@ export async function POST(req: NextRequest) {
         },
       }
     );
+    if (cleanPhone) {
+      res.cookies.set('reva_customer_phone', cleanPhone, {
+        path: '/',
+        maxAge: 31536000,
+        sameSite: 'lax',
+      });
+    }
+    return res;
   } catch (err: unknown) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Session failed' },
