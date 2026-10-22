@@ -676,13 +676,9 @@ function OwnerDashboardContent() {
           }
         }
       } else {
-        // Security Wall: If user is not an owner or has no registered store, redirect to customer passes
-        if (data?.isOwner === false || res.status === 403) {
-          console.warn('[SECURITY] Customer account attempted dashboard access. Redirecting to /c pass portal...');
-          try {
-            localStorage.setItem('reva_auth_role', 'customer');
-          } catch {}
-          router.replace('/c');
+        // If user is unauthenticated, redirect to login (NEVER /c)
+        if (res.status === 401 || !data?.success) {
+          router.replace('/login');
           return;
         }
       }
@@ -842,15 +838,11 @@ function OwnerDashboardContent() {
       if (isInitializing) return;
       isInitializing = true;
 
-      // Security Wall: If active session is a customer, redirect immediately to customer passes
+      // On dashboard, active session is always Business Owner
       try {
-        const activeRole = localStorage.getItem('reva_auth_role');
-        const intendedRole = localStorage.getItem('reva_auth_intended_role');
-        if ((activeRole === 'customer' || intendedRole === 'customer') && !urlBusinessId) {
-          router.replace('/c');
-          isInitializing = false;
-          return;
-        }
+        localStorage.setItem('reva_auth_role', 'business');
+        localStorage.removeItem('reva_customer_phone');
+        localStorage.removeItem('reva_customer_passes');
       } catch {}
 
       if (!user) {

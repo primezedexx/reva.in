@@ -4,6 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -56,23 +57,63 @@ export async function GET(req: NextRequest) {
         });
       }
 
-      // Security Wall: If this authenticated user has no business, do NOT auto-provision!
-      // This strictly prevents customer accounts from ever being converted into merchant stores.
+      // If this authenticated store owner has no business yet, provision their store and owner profile!
       if (userBusinesses.length === 0) {
-        return NextResponse.json(
-          {
-            success: false,
-            isOwner: false,
-            error: 'No business store found for this account. If you are a customer, please view your passes at /c.',
-            redirect: '/c',
-          },
-          {
-            status: 403,
-            headers: {
-              'Cache-Control': 'no-store, no-cache, must-revalidate',
-            },
+        let userEmail = '';
+        let userName = 'My Store';
+        try {
+          const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(userId);
+          if (authUser?.user) {
+            userEmail = authUser.user.email || '';
+            userName =
+              authUser.user.user_metadata?.full_name ||
+              authUser.user.user_metadata?.name ||
+              userEmail.split('@')[0] ||
+              'My Store';
           }
-        );
+        } catch {}
+
+        const cleanName = userName.replace(/[^a-zA-Z0-9\s]/g, '').trim() || 'My';
+        const storeName = `${cleanName}'s Cafe`;
+        const baseSlug = storeName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+        const slug = `${baseSlug}-${Math.random().toString(36).substring(2, 6)}`;
+
+        const newBiz = await db.createBusiness({
+          name: storeName,
+          slug: slug,
+          owner_id: userId,
+          brand_color: '#0F172A',
+          is_setup_completed: false,
+          reward_rule: {
+            stamps_needed: 6,
+            reward_title: 'Free Specialty Beverage',
+            reward_desc: 'Any handcrafted drink on the house',
+            min_order_for_stamp: 150,
+            theme_config: {
+              is_setup_completed: false,
+            },
+          },
+          avg_spend_per_visit: 250.0,
+          min_order_for_stamp: 150.0,
+          winback_delay_multiplier: 1.5,
+          winback_min_days: 5,
+          winback_offer_text: 'Complimentary treat on next visit',
+          plan: 'growth',
+          trial_ends_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          subscription_status: 'trialing',
+          trial_active: true,
+          active_offers: [],
+        });
+
+        await db.createOwner({
+          id: userId,
+          business_id: newBiz.id,
+          name: userName,
+          email: userEmail,
+          role: 'owner',
+        });
+
+        userBusinesses = [newBiz];
       }
 
       // If a specific businessId was requested, verify the user actually owns it
