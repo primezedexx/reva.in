@@ -18,10 +18,8 @@ export async function POST(req: NextRequest) {
       businessId: explicitBusinessId,
       slug,
       businessSlug,
-      phone: rawPhone,
-      name: rawName,
-      customerPhone,
-      customerName,
+      phone,
+      name,
       membershipId: explicitMemId,
       spendAmount,
       stampAwarded = 1,
@@ -31,8 +29,6 @@ export async function POST(req: NextRequest) {
     } = body;
 
     const resolvedSlug = (slug || businessSlug || '').trim();
-    const phone = (rawPhone || customerPhone || '').trim();
-    const name = (rawName || customerName || '').trim();
     let targetBusiness = null;
 
     if (resolvedSlug) {
@@ -61,13 +57,15 @@ export async function POST(req: NextRequest) {
         o &&
         o.id !== 'off_1' &&
         o.title !== 'Welcome Treat' &&
-        o.title !== 'Welcome Milestone Reward'
+        o.title !== 'Welcome Milestone Reward' &&
+        !(o.id === 'off_2' && o.title === 'Free Specialty Beverage')
     );
     const hasCustomActiveReward =
       activeOffers.length > 0 ||
       Boolean(
         targetBusiness?.reward_rule?.reward_title &&
-        targetBusiness.reward_rule.reward_title.trim().length > 0
+        targetBusiness?.reward_rule?.reward_title !== 'Free Specialty Beverage' &&
+        targetBusiness?.reward_rule?.is_setup_completed
       );
 
     if (!hasCustomActiveReward) {
@@ -108,8 +106,28 @@ export async function POST(req: NextRequest) {
 
     const isQrScan = source === 'qr_scan';
 
+    // Auto-reconcile membership stamps from visits table if stamps count is 0
+    if (Number(currentMem.stamps) === 0) {
+      try {
+        const { data: memVisits } = await supabaseAdmin
+          .from('visits')
+          .select('stamp_awarded')
+          .eq('membership_id', targetMemId);
+        const logged = (memVisits || []).reduce((sum, v) => sum + (Number(v.stamp_awarded) || 1), 0);
+        if (logged > 0) {
+          currentMem.stamps = logged;
+          await supabaseAdmin
+            .from('memberships')
+            .update({ stamps: logged, total_visits: (memVisits || []).length })
+            .eq('id', targetMemId);
+        }
+      } catch {}
+    }
+
     // 24-Hour Cooldown Verification for Self-Serve QR Scans
-    const lastClaimIso = currentMem.last_qr_stamp_at;
+    // Cooldown only applies if customer has actually collected stamps/visits before
+    const hasHistory = (Number(currentMem.stamps) > 0) || (Number(currentMem.total_visits) > 0);
+    const lastClaimIso = hasHistory ? currentMem.last_qr_stamp_at : null;
     if (isQrScan && lastClaimIso) {
       const lastClaimTime = new Date(lastClaimIso).getTime();
       const now = Date.now();
@@ -205,16 +223,7 @@ export async function POST(req: NextRequest) {
       isQrScan
     );
 
-    // Update last_qr_stamp_at across memberships for this customer in background
-    if (isQrScan && currentMem.customer_id) {
-      const nowIso = new Date().toISOString();
-      try {
-        await supabaseAdmin
-          .from('memberships')
-          .update({ last_qr_stamp_at: nowIso })
-          .eq('customer_id', currentMem.customer_id);
-      } catch {}
-    }
+    // Visit recorded successfully
 
     const updatedMem = result.membership || currentMem;
 

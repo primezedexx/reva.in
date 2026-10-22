@@ -14,6 +14,7 @@ import {
   Owner,
 } from '@/types/database';
 import { supabaseAdmin } from '@/lib/supabase';
+import { resolveCompleteThemeConfig } from '@/lib/theme-presets';
 
 // Initial Seed Data matching supabase/seed.sql
 const SEED_BUSINESSES: Business[] = [
@@ -774,17 +775,12 @@ class RevaDatabase {
       }
     }
 
-    // Normalize theme_config
-    b.theme_config = b.theme_config || b.reward_rule?.theme_config || {
-      preset: 'clean_minimal',
-      page_bg_tone: 'slate_clean',
-      card_gradient: 'solid',
-      card_bg_color: b.brand_color || '#0F172A',
-      accent_color: b.brand_color || '#0F172A',
-      stamp_icon: 'coffee',
-      card_radius: 'rounded_squircle',
-      is_setup_completed: b.is_setup_completed,
-    };
+    // Normalize theme_config with complete preset defaults
+    const rawTheme = b.reward_rule?.theme_config || b.theme_config;
+    b.theme_config = resolveCompleteThemeConfig(rawTheme);
+    if (!b.brand_color || b.brand_color === '#0F172A') {
+      b.brand_color = b.theme_config.card_bg_color || '#451A03';
+    }
 
     const isCompleted =
       b.reward_rule?.theme_config?.is_setup_completed ??
@@ -1658,7 +1654,43 @@ class RevaDatabase {
         .select('*, customer:customers(*), business:businesses(*)')
         .in('customer_id', validIds)
         .order('last_visit_at', { ascending: false });
-      if (!error && data) return data;
+      if (!error && data) {
+        const memIds = data.map((m: any) => m.id);
+        if (memIds.length > 0) {
+          try {
+            const { data: visits } = await supabaseAdmin
+              .from('visits')
+              .select('membership_id, scanned_at, stamp_awarded, staff_note')
+              .in('membership_id', memIds)
+              .order('scanned_at', { ascending: false });
+
+            const lastQrMap = new Map<string, string>();
+            const totalStampsMap = new Map<string, number>();
+
+            (visits || []).forEach((v: any) => {
+              const stamps = Number(v.stamp_awarded) || 1;
+              totalStampsMap.set(v.membership_id, (totalStampsMap.get(v.membership_id) || 0) + stamps);
+              const isQr = Boolean(v.staff_note && v.staff_note.toLowerCase().includes('qr'));
+              if (isQr && !lastQrMap.has(v.membership_id)) {
+                lastQrMap.set(v.membership_id, v.scanned_at);
+              }
+            });
+
+            return data.map((m: any) => {
+              const loggedStamps = totalStampsMap.get(m.id) || 0;
+              const activeStamps = Math.max(Number(m.stamps) || 0, loggedStamps);
+              return {
+                ...m,
+                stamps: activeStamps,
+                last_qr_stamp_at: lastQrMap.get(m.id) || m.last_qr_stamp_at || null,
+              };
+            });
+          } catch {
+            return data;
+          }
+        }
+        return data;
+      }
     } catch {
       // fallback
     }
@@ -1889,7 +1921,6 @@ class RevaDatabase {
           total_visits: newTotalVisits,
           total_spend: newTotalSpend,
           last_visit_at: nowIso,
-          last_qr_stamp_at: updatedQrTimestamp,
           avg_visit_gap_days: newAvgGap,
         })
         .eq('id', actualMemId);
@@ -2601,6 +2632,21 @@ class RevaDatabase {
           } catch {
             // ignore async background sync errors
           }
+        })();
+      } else if (loggedStamps > activeStamps) {
+        // Self-heal membership stamps from visits table in Supabase
+        mem.stamps = loggedStamps;
+        mem.total_visits = Math.max(Number(mem.total_visits) || 0, memVisits.length);
+        (async () => {
+          try {
+            await supabaseAdmin
+              .from('memberships')
+              .update({
+                stamps: loggedStamps,
+                total_visits: memVisits.length,
+              })
+              .eq('id', mem.id);
+          } catch {}
         })();
       }
     }

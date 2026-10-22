@@ -189,22 +189,40 @@ export const CARD_GRADIENTS: Array<{ id: CardGradientType; label: string; previe
   { id: 'solid', label: 'Classic Solid Brand Color', preview: '#0F172A' },
 ];
 
-export function resolvePassBackground(theme?: ThemeConfig, defaultBrandColor: string = '#0F172A'): string {
-  if (!theme) return defaultBrandColor;
-  if (theme.card_gradient === 'cat_pastel') return 'linear-gradient(135deg, #EC4899 0%, #8B5CF6 100%)';
-  if (theme.card_gradient === 'mocha_roast') return 'linear-gradient(135deg, #3E2723 0%, #795548 100%)';
-  if (theme.card_gradient === 'emerald_depth') return 'linear-gradient(135deg, #064E3B 0%, #047857 100%)';
-  if (theme.card_gradient === 'sunset_glow') return 'linear-gradient(135deg, #7C3AED 0%, #F59E0B 100%)';
-  if (theme.card_gradient === 'luxury_mesh') return 'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)';
-  if (theme.card_gradient === 'cyber_neon') return 'linear-gradient(135deg, #4F46E5 0%, #06B6D4 100%)';
-  return theme.card_bg_color || defaultBrandColor;
+export function resolveCompleteThemeConfig(theme?: ThemeConfig | null): ThemeConfig {
+  const presetId = theme?.preset || 'warm_latte';
+  const matched = THEME_PRESETS.find((p) => p.id === presetId) || THEME_PRESETS[0];
+
+  return {
+    ...matched.config,
+    ...(theme || {}),
+    card_gradient: theme?.card_gradient || matched.config.card_gradient,
+    card_bg_color: theme?.card_bg_color || matched.config.card_bg_color,
+    accent_color: theme?.accent_color || matched.config.accent_color,
+    stamp_icon: theme?.stamp_icon || matched.config.stamp_icon,
+    welcome_badge: theme?.welcome_badge || matched.config.welcome_badge,
+    custom_tagline: theme?.custom_tagline || matched.config.custom_tagline,
+    page_bg_tone: theme?.page_bg_tone || matched.config.page_bg_tone,
+    custom_page_bg: theme?.custom_page_bg || matched.config.custom_page_bg,
+  };
 }
 
-export function resolvePageBackground(theme?: ThemeConfig): { bg: string; isDark: boolean } {
-  if (!theme) return { bg: '#F8FAFC', isDark: false };
-  if (theme.custom_page_bg) return { bg: theme.custom_page_bg, isDark: Boolean(theme.is_dark_mode) };
+export function resolvePassBackground(theme?: ThemeConfig | null, defaultBrandColor: string = '#451A03'): string {
+  const resolved = resolveCompleteThemeConfig(theme);
+  if (resolved.card_gradient === 'cat_pastel') return 'linear-gradient(135deg, #EC4899 0%, #8B5CF6 100%)';
+  if (resolved.card_gradient === 'mocha_roast') return 'linear-gradient(135deg, #3E2723 0%, #795548 100%)';
+  if (resolved.card_gradient === 'emerald_depth') return 'linear-gradient(135deg, #064E3B 0%, #047857 100%)';
+  if (resolved.card_gradient === 'sunset_glow') return 'linear-gradient(135deg, #7C3AED 0%, #F59E0B 100%)';
+  if (resolved.card_gradient === 'luxury_mesh') return 'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)';
+  if (resolved.card_gradient === 'cyber_neon') return 'linear-gradient(135deg, #4F46E5 0%, #06B6D4 100%)';
+  return resolved.card_bg_color || defaultBrandColor;
+}
 
-  switch (theme.page_bg_tone) {
+export function resolvePageBackground(theme?: ThemeConfig | null): { bg: string; isDark: boolean } {
+  const resolved = resolveCompleteThemeConfig(theme);
+  if (resolved.custom_page_bg) return { bg: resolved.custom_page_bg, isDark: Boolean(resolved.is_dark_mode) };
+
+  switch (resolved.page_bg_tone) {
     case 'warm_ivory':
       return { bg: '#FAF7F2', isDark: false };
     case 'soft_rose':

@@ -60,7 +60,7 @@ import {
 import { sound } from '@/lib/sound';
 import { supabase } from '@/lib/supabase';
 import { compressImageFile } from '@/lib/image-compress';
-import { resolvePassBackground, resolvePageBackground } from '@/lib/theme-presets';
+import { resolvePassBackground, resolvePageBackground, resolveCompleteThemeConfig } from '@/lib/theme-presets';
 import { ThemeConfig, RewardRule } from '@/types/database';
 import CameraQrScannerModal from '@/components/CameraQrScannerModal';
 import PrivacySecurityModal from '@/components/PrivacySecurityModal';
@@ -212,40 +212,14 @@ function formatMemberSinceMonth(isoDateStr?: string | null): string {
   }
 }
 
-function formatExactRegistrationDate(isoDateStr?: string | null): string {
-  if (!isoDateStr) return new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+function formatMemberJoinDate(isoDateStr?: string | null): string {
+  if (!isoDateStr) return new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
   try {
     const d = new Date(isoDateStr);
-    if (isNaN(d.getTime())) return new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
-    return d.toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+    if (isNaN(d.getTime())) return new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
   } catch {
-    return new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
-  }
-}
-
-function getLivelyMembershipDuration(isoDateStr?: string | null): string {
-  if (!isoDateStr) return 'Joined today • Active';
-  try {
-    const now = Date.now();
-    const joined = new Date(isoDateStr).getTime();
-    if (isNaN(joined)) return 'Joined today • Active';
-    const diffMs = Math.max(0, now - joined);
-    const diffMins = Math.floor(diffMs / (1000 * 60));
-    if (diffMins < 60) {
-      if (diffMins <= 2) return 'Joined just now • Active';
-      return 'Joined today • Active';
-    }
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    if (diffHours < 24) return 'Joined today • Active';
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    if (diffDays === 1) return 'Member for 1 day • Active';
-    if (diffDays < 30) return `Member for ${diffDays} days • Active`;
-    const diffMonths = Math.floor(diffDays / 30);
-    if (diffMonths < 12) return `Member for ${diffMonths} month${diffMonths > 1 ? 's' : ''} • Active`;
-    const diffYears = Math.floor(diffDays / 365);
-    return `Member for ${diffYears} year${diffYears > 1 ? 's' : ''} • VIP`;
-  } catch {
-    return 'Joined today • Active';
+    return new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
   }
 }
 
@@ -933,15 +907,20 @@ function CustomerPortalContent() {
     let storageTime = 0;
     if (typeof window !== 'undefined') {
       try {
-        storageTime = Number(localStorage.getItem(`reva_last_qr_stamp_ts_${storeSlug}`) || 0);
+        const phoneKey = customerPhone ? customerPhone.replace(/\D/g, '').slice(-10) : '';
+        if (phoneKey) {
+          storageTime = Number(localStorage.getItem(`reva_last_qr_stamp_ts_${phoneKey}_${storeSlug}`) || 0);
+        }
       } catch {}
     }
     return Math.max(passTime, storageTime);
-  }, [selectedPass]);
+  }, [selectedPass, customerPhone]);
 
   const COOLDOWN_MS = 24 * 60 * 60 * 1000;
   const timeSinceLastQr = currentStoreQrStamp > 0 ? Date.now() - currentStoreQrStamp : Infinity;
-  const isGlobalCooldownActive = currentStoreQrStamp > 0 && timeSinceLastQr < COOLDOWN_MS;
+  // If the user has 0 stamps and has never collected any stamp or visit at this store, NEVER block with cooldown!
+  const hasEverCollected = (selectedPass?.stamps || 0) > 0 || (selectedPass?.cycle && selectedPass.cycle > 1) || (selectedPass?.total_visits || 0) > 0;
+  const isGlobalCooldownActive = hasEverCollected && currentStoreQrStamp > 0 && timeSinceLastQr < COOLDOWN_MS;
   const remainingCooldownMs = isGlobalCooldownActive ? COOLDOWN_MS - timeSinceLastQr : 0;
   const remainingCooldownHours = Math.max(0, Math.floor(remainingCooldownMs / (1000 * 60 * 60)));
   const remainingCooldownMins = Math.max(1, Math.floor((remainingCooldownMs % (1000 * 60 * 60)) / (1000 * 60)));
@@ -2667,12 +2646,13 @@ function CustomerPortalContent() {
 
               {/* TACTILE PASS CARD OR EMPTY STATE */}
               {selectedPass ? (() => {
-                const passTheme = selectedPass.theme_config || selectedPass.reward_rule?.theme_config;
-                const passCardBg = resolvePassBackground(passTheme, selectedPass.brandColor);
-                const passStampIcon = passTheme?.stamp_icon || 'paw';
-                const passCardRadius = passTheme?.card_radius === 'rounded_squircle' ? 'rounded-[32px]' : passTheme?.card_radius === 'rounded_sharp' ? 'rounded-2xl' : 'rounded-3xl';
-                const passWelcomeBadge = passTheme?.welcome_badge || 'OFFICIAL LOYALTY PASS';
-                const passCustomTagline = passTheme?.custom_tagline;
+                const rawTheme = selectedPass.theme_config || selectedPass.reward_rule?.theme_config || currentStore?.theme_config || currentStore?.reward_rule?.theme_config;
+                const passTheme = resolveCompleteThemeConfig(rawTheme);
+                const passCardBg = resolvePassBackground(passTheme, selectedPass.brandColor || passTheme.card_bg_color);
+                const passStampIcon = passTheme.stamp_icon || 'croissant';
+                const passCardRadius = passTheme.card_radius === 'rounded_squircle' ? 'rounded-[32px]' : passTheme.card_radius === 'rounded_sharp' ? 'rounded-2xl' : 'rounded-3xl';
+                const passWelcomeBadge = passTheme.welcome_badge || '☕ Artisan Coffee & Bakery Pass';
+                const passCustomTagline = passTheme.custom_tagline;
 
                 return (
                   <div
@@ -2897,7 +2877,7 @@ function CustomerPortalContent() {
                     </div>
 
                     <span className="text-[10px] text-white/70 font-mono shrink-0">
-                      Last Visit: {selectedPass.lastVisit}
+                      {selectedPass.last_visit_at ? `Last Visit: ${formatMemberJoinDate(selectedPass.last_visit_at)}` : `Joined: ${formatMemberJoinDate(selectedPass.joined_at)}`}
                     </span>
                   </div>
                 </div>
@@ -4190,7 +4170,7 @@ function CustomerPortalContent() {
                 )}
               </div>
 
-              {/* Dynamic Lively Member Registration Row */}
+              {/* Exact Member Registration Date Row */}
               <div className="border-t border-slate-100 dark:border-slate-800 pt-3.5 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center justify-center shrink-0 border border-slate-200/80 dark:border-slate-700">
@@ -4198,15 +4178,15 @@ function CustomerPortalContent() {
                   </div>
                   <div>
                     <div className="text-[11px] uppercase font-mono font-bold text-slate-500 dark:text-slate-400">
-                      {selectedPass ? `Member of ${selectedPass.name}` : 'Joined Siplo'}
+                      {selectedPass ? `Member of ${selectedPass.name}` : 'Joined Member'}
                     </div>
                     <div className="font-display font-bold text-xs text-slate-900 dark:text-white pt-0.5">
-                      {formatExactRegistrationDate(selectedPass?.joined_at || registeredAt)}
+                      Joined {formatMemberJoinDate(selectedPass?.joined_at || registeredAt)}
                     </div>
                   </div>
                 </div>
-                <span className="text-[10px] font-mono font-semibold text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-full border border-slate-200 dark:border-slate-700">
-                  {getLivelyMembershipDuration(selectedPass?.joined_at || registeredAt)}
+                <span className="text-[11px] font-mono font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full border border-slate-200 dark:border-slate-700">
+                  {formatMemberJoinDate(selectedPass?.joined_at || registeredAt)}
                 </span>
               </div>
             </div>
@@ -4445,9 +4425,14 @@ function CustomerPortalContent() {
             const claimedRewardId = res.rewardId || selectedPass?.rewardId;
             const nowIso = new Date().toISOString();
             try {
-              localStorage.setItem('reva_last_qr_stamp_ts', String(Date.now()));
+              const phoneKey = customerPhone ? customerPhone.replace(/\D/g, '').slice(-10) : '';
+              if (phoneKey && res.business?.slug) {
+                localStorage.setItem(`reva_last_qr_stamp_ts_${phoneKey}_${res.business.slug}`, String(Date.now()));
+              }
+              // Clean up any old un-scoped keys
+              localStorage.removeItem('reva_last_qr_stamp_ts');
               if (res.business?.slug) {
-                localStorage.setItem(`reva_last_qr_stamp_ts_${res.business.slug}`, String(Date.now()));
+                localStorage.removeItem(`reva_last_qr_stamp_ts_${res.business.slug}`);
               }
             } catch {}
 

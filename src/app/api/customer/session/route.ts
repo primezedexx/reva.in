@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { supabaseAdmin } from '@/lib/supabase';
+import { resolveCompleteThemeConfig } from '@/lib/theme-presets';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -79,15 +80,7 @@ export async function GET(req: NextRequest) {
       const rawBiz = m.business || allBusinesses.find((b) => b.id === m.business_id);
       const biz = rawBiz ? db.ensureBusinessOffers(rawBiz) : null;
       const stampsNeeded = biz?.reward_rule?.stamps_needed || 6;
-      const themeConfig = biz?.theme_config || biz?.reward_rule?.theme_config || {
-        preset: 'clean_minimal',
-        page_bg_tone: 'slate_clean',
-        card_gradient: 'solid',
-        card_bg_color: biz?.brand_color || '#0F172A',
-        accent_color: biz?.brand_color || '#0F172A',
-        stamp_icon: 'paw',
-        card_radius: 'rounded_squircle',
-      };
+      const themeConfig = resolveCompleteThemeConfig(biz?.reward_rule?.theme_config || biz?.theme_config);
 
       // 1. Primary pass for this store (e.g. Specialty Beverage)
       passes.push({
@@ -97,7 +90,7 @@ export async function GET(req: NextRequest) {
         businessId: biz?.id,
         name: biz?.name || 'Local Cafe',
         category: biz?.category || biz?.reward_rule?.category || 'Café & Beverage',
-        brandColor: biz?.brand_color || '#0F172A',
+        brandColor: themeConfig.card_bg_color || biz?.brand_color || '#451A03',
         logo_url: biz?.logo_url || '',
         stamps: m.stamps || 0,
         totalStamps: stampsNeeded,
