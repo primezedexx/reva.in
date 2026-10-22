@@ -157,8 +157,9 @@ interface ClaimedReward {
   status?: 'PENDING' | 'REDEEMED';
 }
 
-function getBusinessLogo(name: string, category?: string, logoUrl?: string): string {
-  if (logoUrl && logoUrl.trim().length > 0) return logoUrl;
+function getBusinessLogo(name: string, category?: string, logoUrl?: string, themeConfig?: any): string {
+  const effectiveUrl = logoUrl || (themeConfig as any)?.logo_url || (themeConfig as any)?.custom_avatar;
+  if (effectiveUrl && effectiveUrl.trim().length > 0) return effectiveUrl;
   const lower = (name + ' ' + (category || '')).toLowerCase();
   if (lower.includes('chai') || lower.includes('sutta') || lower.includes('kulhad') || lower.includes('tapri') || lower.includes('matcha') || lower.includes('tea')) {
     return 'https://images.unsplash.com/photo-1576092768241-dec231879fc3?w=300&auto=format&fit=crop&q=80';
@@ -1232,21 +1233,8 @@ function CustomerPortalContent() {
             if (res.ok) {
               const sessionData = await res.json();
 
-              // If database confirms customer does not exist, purge any stale/ghost phone from browser localStorage
-              if (sessionData.customer === null) {
-                setCustomerPhone('');
-                setCustomerName('Valued Guest');
-                setUserPasses([]);
-                try {
-                  localStorage.removeItem('reva_customer_phone');
-                  localStorage.removeItem('reva_customer_passes');
-                  localStorage.removeItem('reva_customer_name');
-                  localStorage.removeItem('reva_customer_email');
-                  localStorage.removeItem('reva_customer_avatar');
-                  localStorage.removeItem('reva_customer_registered_at');
-                  document.cookie = 'reva_customer_phone=; path=/; max-age=0';
-                  document.cookie = 'reva_customer_email=; path=/; max-age=0';
-                } catch {}
+              // If database returns no customer record, preserve existing local cache gracefully
+              if (!sessionData || sessionData.customer === null) {
                 return;
               }
 
@@ -1631,6 +1619,67 @@ function CustomerPortalContent() {
     return () => clearInterval(interval);
   }, []);
 
+  // Prevent accidental logout on browser back button & handle sub-tabs/modals
+  useEffect(() => {
+    try {
+      window.history.pushState({ page: 'pass', tab: activeTab }, '', window.location.href);
+    } catch {}
+
+    const handlePopState = () => {
+      // 1. If any modal is open, close it first
+      const hasOpenModal =
+        Boolean(joiningBusiness) ||
+        showScannerModal ||
+        Boolean(redeemingReward) ||
+        Boolean(cooldownModal) ||
+        showEditProfileModal ||
+        showLocationModal ||
+        showPrivacyModal;
+
+      if (hasOpenModal) {
+        setJoiningBusiness(null);
+        setShowScannerModal(false);
+        setRedeemingReward(null);
+        setCooldownModal(null);
+        setShowEditProfileModal(false);
+        setShowLocationModal(false);
+        setShowPrivacyModal(false);
+        try {
+          window.history.pushState({ page: 'pass', tab: activeTab }, '', window.location.href);
+        } catch {}
+        return;
+      }
+
+      // 2. If on subtab (rewards, explore, details, profile), go back to home tab
+      if (activeTab !== 'home') {
+        setActiveTab('home');
+        try {
+          window.history.pushState({ page: 'pass', tab: 'home' }, '', window.location.href);
+        } catch {}
+        return;
+      }
+
+      // 3. If on home tab, stay on pass page (prevent popping back to login)
+      try {
+        window.history.pushState({ page: 'pass', tab: 'home' }, '', window.location.href);
+      } catch {}
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [
+    activeTab,
+    joiningBusiness,
+    showScannerModal,
+    redeemingReward,
+    cooldownModal,
+    showEditProfileModal,
+    showLocationModal,
+    showPrivacyModal,
+  ]);
+
   // Fetch Businesses from API
   useEffect(() => {
     async function fetchBusinesses() {
@@ -1649,6 +1698,13 @@ function CustomerPortalContent() {
                     localStorage.setItem('reva_cached_businesses', JSON.stringify(updated));
                   } catch {}
                   return updated;
+                });
+                // Ensure joiningBusiness immediately reflects live store name and logo
+                setJoiningBusiness((curr) => {
+                  if (curr && (curr.slug === d.business.slug || curr.id === d.business.id || curr.slug === storeParam || curr.id === storeParam)) {
+                    return d.business;
+                  }
+                  return curr;
                 });
               }
             })
@@ -1688,8 +1744,10 @@ function CustomerPortalContent() {
       return;
     }
 
-    const targetBiz = businesses.find((b: any) => b.slug === storeParam) || (currentStore?.slug === storeParam ? currentStore : null);
-    if (targetBiz && !joiningBusiness) {
+    const targetBiz = businesses.find((b: any) => b.slug === storeParam || b.id === storeParam) || (currentStore?.slug === storeParam ? currentStore : null);
+    if (targetBiz) {
+      const isOutdatedJoin = Boolean(joiningBusiness && (joiningBusiness.name !== targetBiz.name || (!joiningBusiness.logo_url && targetBiz.logo_url)));
+      if (!joiningBusiness || isOutdatedJoin) {
       const existingPhone = customerPhone || (typeof window !== 'undefined' ? localStorage.getItem('reva_customer_phone') : '');
       const existingName = customerName || (typeof window !== 'undefined' ? localStorage.getItem('reva_customer_name') : '');
       if (existingPhone && existingPhone.replace(/\D/g, '').length >= 10) {
@@ -1740,8 +1798,9 @@ function CustomerPortalContent() {
           .catch(() => {
             setJoiningBusiness(targetBiz);
           });
-      } else {
-        setJoiningBusiness(targetBiz);
+        } else {
+          setJoiningBusiness(targetBiz);
+        }
       }
     }
   }, [storeParam, businesses, userPasses, currentStore, joiningBusiness, isPreviewMode, customerPhone, customerName, isSessionLoaded]);
@@ -4755,9 +4814,12 @@ function CustomerPortalContent() {
               <div className="w-13 h-13 rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-800 shrink-0 border border-slate-200 dark:border-slate-700 shadow-2xs">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={getBusinessLogo(joiningBusiness.name, joiningBusiness.category, joiningBusiness.logo_url)}
+                  src={getBusinessLogo(joiningBusiness.name, joiningBusiness.category, joiningBusiness.logo_url, (joiningBusiness as any).theme_config)}
                   alt={joiningBusiness.name}
                   className="w-full h-full object-cover"
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).src = 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=300&auto=format&fit=crop&q=80';
+                  }}
                 />
               </div>
               <div className="min-w-0">

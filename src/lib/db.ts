@@ -1198,13 +1198,15 @@ class RevaDatabase {
       const { data, error } = await supabaseAdmin
         .from('customers')
         .select('*')
-        .ilike('phone', cleanEmail)
-        .maybeSingle();
-      if (!error && data) {
+        .or(`email.ilike.${cleanEmail},phone.ilike.${cleanEmail}`)
+        .order('created_at', { ascending: false })
+        .limit(1);
+      if (!error && Array.isArray(data) && data.length > 0) {
+        const match = data[0];
         return {
-          ...data,
-          email: cleanEmail,
-          registered_at: data.created_at,
+          ...match,
+          email: match.email || cleanEmail,
+          registered_at: match.created_at,
         };
       }
     } catch {
@@ -1226,18 +1228,21 @@ class RevaDatabase {
       if (isUuid) {
         query = query.eq('id', clean);
       } else if (isEmail) {
-        query = query.ilike('phone', clean.toLowerCase());
+        query = query.or(`phone.ilike.${clean.toLowerCase()},email.ilike.${clean.toLowerCase()}`);
       } else if (last10.length >= 7) {
         query = query.or(`phone.eq.${clean},phone.eq.${phone},phone.ilike.%${last10}`);
       } else {
         query = query.or(`phone.eq.${clean},phone.eq.${phone}`);
       }
-      const { data, error } = await query.maybeSingle();
-      if (!error && data) {
+      const { data, error } = await query.order('created_at', { ascending: false }).limit(5);
+      if (!error && Array.isArray(data) && data.length > 0) {
+        // Prioritize exact phone match, otherwise best match
+        const exact = data.find((c: any) => c.phone === clean || c.phone === phone);
+        const match = exact || data[0];
         return {
-          ...data,
-          email: data.phone?.includes('@') ? data.phone : undefined,
-          registered_at: data.created_at,
+          ...match,
+          email: match.email || (match.phone?.includes('@') ? match.phone : undefined),
+          registered_at: match.created_at,
         };
       }
     } catch {

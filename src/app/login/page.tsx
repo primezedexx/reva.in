@@ -107,7 +107,18 @@ function LoginContent() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    // If user is already authenticated via Supabase, they are a Business Owner!
+    // 1. If customer already has active session credentials and hit back to /login, restore their pass!
+    const urlRole = searchParams.get('role');
+    const localCustomerPhone = typeof window !== 'undefined' ? localStorage.getItem('reva_customer_phone') : null;
+    const localRole = typeof window !== 'undefined' ? localStorage.getItem('reva_auth_role') : null;
+
+    if (localCustomerPhone && localCustomerPhone !== '+91 98765 43210' && localRole !== 'business' && (!urlRole || urlRole === 'customer')) {
+      const next = searchParams.get('next');
+      router.replace(next || '/c');
+      return;
+    }
+
+    // 2. If user is already authenticated via Supabase, they are a Business Owner!
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session?.user) {
         const next = searchParams.get('next');
@@ -121,7 +132,6 @@ function LoginContent() {
       }
     });
 
-    const urlRole = searchParams.get('role');
     if (urlRole === 'customer') {
       setRole('customer');
     } else if (urlRole === 'business') {

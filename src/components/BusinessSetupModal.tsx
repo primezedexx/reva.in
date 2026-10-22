@@ -31,6 +31,9 @@ import {
   Heart,
   Zap,
   Clock,
+  Image as ImageIcon,
+  Upload,
+  Trash2,
 } from 'lucide-react';
 import {
   Business,
@@ -77,6 +80,7 @@ export default function BusinessSetupModal({
 
   // Step 1: Store Info
   const [storeName, setStoreName] = useState(business.name || '');
+  const [logoUrl, setLogoUrl] = useState(business.logo_url || '');
   const [category, setCategory] = useState(business.category || 'Cafe & Coffee Shop');
   const [city, setCity] = useState(business.city || 'Bangalore');
   const [area, setArea] = useState(business.area || 'Indiranagar');
@@ -133,6 +137,7 @@ export default function BusinessSetupModal({
   useEffect(() => {
     if (business) {
       setStoreName(business.name || '');
+      setLogoUrl(business.logo_url || '');
       setCategory(business.category || 'Cafe & Coffee Shop');
       setCity(business.city || 'Bangalore');
       setArea(business.area || 'Indiranagar');
@@ -162,6 +167,26 @@ export default function BusinessSetupModal({
       }
     }
   }, [business]);
+
+  // Handle local logo file upload
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      alert('Please select a valid image file (PNG, JPG, WebP).');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const src = event.target?.result as string;
+      if (src) {
+        setLogoUrl(src);
+        sound.playStampPop();
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
 
   if (!isOpen) return null;
 
@@ -193,6 +218,16 @@ export default function BusinessSetupModal({
         .replace(/(^-|-$)/g, '');
       const uniqueSlug = `${cleanSlug}-${business.id.substring(0, 4)}`;
 
+      // Update slug if setup was incomplete, name changed, or slug contained Gmail owner name / placeholder
+      const isDefaultOrOwnerSlug =
+        !business.is_setup_completed ||
+        business.slug.includes('-s-cafe') ||
+        business.slug.includes('-s-store') ||
+        business.slug.startsWith('store-') ||
+        business.slug.startsWith('my-store') ||
+        (business.name && cleanName.toLowerCase() !== business.name.toLowerCase());
+      const finalSlug = isDefaultOrOwnerSlug ? uniqueSlug : (business.slug || uniqueSlug);
+
       const compiledTheme: ThemeConfig = {
         preset: selectedPreset,
         page_bg_tone: pageBgTone,
@@ -209,26 +244,29 @@ export default function BusinessSetupModal({
       };
 
       const cleanPhone = phone.trim();
+      const cleanLogo = logoUrl.trim() || undefined;
       const updatedRewardRule = {
         stamps_needed: Number(stampsNeeded) || 6,
         reward_title: rewardTitle.trim() || 'Free Specialty Beverage',
         reward_desc: rewardDesc.trim() || 'Any handcrafted drink on the house',
         min_order_for_stamp: Number(minOrder) || 150,
         expiry_days: Number(expiryDays) >= 0 ? Number(expiryDays) : 60,
-        theme_config: compiledTheme,
+        theme_config: { ...compiledTheme, logo_url: cleanLogo },
         phone: cleanPhone || undefined,
         phone_verified: Boolean(cleanPhone),
+        logo_url: cleanLogo,
       };
 
       const payload = {
         name: cleanName,
-        slug: business.slug && !business.slug.startsWith('store-') ? business.slug : uniqueSlug,
+        slug: finalSlug,
         category: category,
         city: city.trim() || 'Bangalore',
         area: area.trim() || undefined,
         phone: cleanPhone || undefined,
         phone_verified: Boolean(cleanPhone),
         brand_color: cardBgColor || '#0F172A',
+        logo_url: cleanLogo,
         reward_rule: updatedRewardRule,
         theme_config: compiledTheme,
         is_setup_completed: true,
@@ -464,6 +502,59 @@ export default function BusinessSetupModal({
                       className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-[#0F172A] focus:outline-none focus:border-[#0F172A] focus:ring-1 focus:ring-[#0F172A]"
                       required
                     />
+                  </div>
+
+                  {/* Store Logo Section */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <ImageIcon className="w-3.5 h-3.5 text-amber-500" />
+                        <span>Cafe / Business Logo</span>
+                      </span>
+                      {logoUrl && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            sound.playClick();
+                            setLogoUrl('');
+                          }}
+                          className="text-[11px] text-rose-500 hover:text-rose-700 font-medium flex items-center gap-1 cursor-pointer"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          <span>Remove</span>
+                        </button>
+                      )}
+                    </label>
+
+                    <div className="flex items-center gap-3">
+                      <div className="w-14 h-14 rounded-2xl bg-slate-100 border-2 border-dashed border-slate-300 flex items-center justify-center shrink-0 overflow-hidden relative">
+                        {logoUrl ? (
+                          <img src={logoUrl} alt="Store Logo Preview" className="w-full h-full object-cover" />
+                        ) : (
+                          <Store className="w-6 h-6 text-slate-400" />
+                        )}
+                      </div>
+
+                      <div className="flex-1 space-y-1.5">
+                        <label className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-semibold cursor-pointer shadow-xs transition-all">
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>Upload Logo Image</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleLogoUpload}
+                            className="hidden"
+                          />
+                        </label>
+                        <input
+                          type="url"
+                          value={logoUrl}
+                          onChange={(e) => setLogoUrl(e.target.value)}
+                          placeholder="or paste image URL..."
+                          className="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-200 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:border-slate-900"
+                        />
+                      </div>
+                    </div>
                   </div>
 
                   <div>
@@ -901,9 +992,15 @@ export default function BusinessSetupModal({
                     </p>
                   </div>
 
-                  <div className="w-10 h-10 rounded-2xl bg-white/15 backdrop-blur-md border border-white/30 flex items-center justify-center text-xl shrink-0">
-                    {selectedIconData.icon}
-                  </div>
+                  {logoUrl ? (
+                    <div className="w-11 h-11 rounded-2xl overflow-hidden bg-white/20 border border-white/30 shrink-0 shadow-xs">
+                      <img src={logoUrl} alt="Store Logo" className="w-full h-full object-cover" />
+                    </div>
+                  ) : (
+                    <div className="w-10 h-10 rounded-2xl bg-white/15 backdrop-blur-md border border-white/30 flex items-center justify-center text-xl shrink-0">
+                      {selectedIconData.icon}
+                    </div>
+                  )}
                 </div>
 
                 {/* Stamp Collection Grid Simulation */}
