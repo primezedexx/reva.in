@@ -1231,6 +1231,25 @@ function CustomerPortalContent() {
             });
             if (res.ok) {
               const sessionData = await res.json();
+
+              // If database confirms customer does not exist, purge any stale/ghost phone from browser localStorage
+              if (sessionData.customer === null) {
+                setCustomerPhone('');
+                setCustomerName('Valued Guest');
+                setUserPasses([]);
+                try {
+                  localStorage.removeItem('reva_customer_phone');
+                  localStorage.removeItem('reva_customer_passes');
+                  localStorage.removeItem('reva_customer_name');
+                  localStorage.removeItem('reva_customer_email');
+                  localStorage.removeItem('reva_customer_avatar');
+                  localStorage.removeItem('reva_customer_registered_at');
+                  document.cookie = 'reva_customer_phone=; path=/; max-age=0';
+                  document.cookie = 'reva_customer_email=; path=/; max-age=0';
+                } catch {}
+                return;
+              }
+
               if (sessionData.passes && Array.isArray(sessionData.passes)) {
                 setUserPasses(sessionData.passes);
                 localStorage.setItem('reva_customer_passes', JSON.stringify(sessionData.passes));
