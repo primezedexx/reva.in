@@ -81,17 +81,16 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // 3. Check cookies for explicit intended role
+    // 3. Authenticated Supabase / Google users are business owners
     const cookieHeader = req.headers.get('cookie') || '';
     const match = cookieHeader.match(/(?:^|;\s*)reva_auth_intended_role=([^;]+)/);
     const intendedRole = match ? match[1] : null;
 
-    if (intendedRole === 'business') {
+    if (userId || intendedRole === 'business') {
       return NextResponse.json({ role: 'business', isOwner: false, isCustomer: false });
     }
 
-    // Safe default: customer
-    return NextResponse.json({ role: 'customer', isOwner: false, isCustomer: false });
+    return NextResponse.json({ role: 'business', isOwner: false, isCustomer: false });
   } catch (err: unknown) {
     console.error('Role resolution error:', err);
     return NextResponse.json({ role: 'customer', isOwner: false, isCustomer: false });

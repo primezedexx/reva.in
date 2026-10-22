@@ -1124,35 +1124,7 @@ function CustomerPortalContent() {
         let currentName = localStorage.getItem('reva_customer_name') || '';
         let rawEmail = localStorage.getItem('reva_customer_email') || '';
 
-        // If email or name missing from localStorage, check active Supabase session (e.g. Google SSO)
-        if (!rawEmail || !currentName) {
-          try {
-            const { data: authData } = await supabase.auth.getSession();
-            if (authData?.session?.user) {
-              const u = authData.session.user;
-              if (!rawEmail && u.email) {
-                rawEmail = u.email.trim().toLowerCase();
-                try { localStorage.setItem('reva_customer_email', rawEmail); } catch {}
-              }
-              if (!currentName) {
-                const fetchedName =
-                  u.user_metadata?.full_name ||
-                  u.user_metadata?.name ||
-                  u.email?.split('@')[0];
-                if (fetchedName) {
-                  currentName = fetchedName;
-                  try { localStorage.setItem('reva_customer_name', currentName); } catch {}
-                }
-              }
-              if (u.user_metadata?.avatar_url && !localStorage.getItem('reva_customer_avatar')) {
-                try {
-                  localStorage.setItem('reva_customer_avatar', u.user_metadata.avatar_url);
-                  setCustomerAvatar(u.user_metadata.avatar_url);
-                } catch {}
-              }
-            }
-          } catch {}
-        }
+        // Customer profile strictly relies on in-store verified phone credentials
 
         const hasRealPhone = currentPhone && currentPhone !== '+91 98765 43210' && currentPhone !== '9876543210' && !currentPhone.includes('@') && currentPhone.replace(/\D/g, '').length >= 10;
 

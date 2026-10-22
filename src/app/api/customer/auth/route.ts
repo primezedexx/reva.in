@@ -301,60 +301,12 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 3. ACTION: GOOGLE LOGIN FOR CUSTOMER
+    // 3. Customer Google login is completely removed (Customers verify in-person via mobile phone)
     if (action === 'google_login') {
-      const emailId = (email || '').trim().toLowerCase();
-      const displayName = (name || '').trim() || 'Valued Guest';
-      // Use email or phone cleanly as customer identifier
-      const phoneId = phone ? phone.trim().replace(/\s+/g, '') : emailId;
-      const regTimestamp = body.registered_at || body.createdAt || body.created_at || new Date().toISOString();
-
-      const customer = await db.createOrGetCustomer(phoneId, displayName, avatarUrl || undefined, {
-        email: emailId || undefined,
-        phone: phone ? phoneId : undefined,
-        name: displayName,
-        avatar_url: avatarUrl || undefined,
-        auth_provider: 'google',
-        registered_at: regTimestamp,
-        last_sign_in_at: new Date().toISOString(),
-        sign_in_details: {
-          method: 'google_sso',
-          email: emailId,
-          name: displayName,
-          avatar_url: avatarUrl,
-          timestamp: new Date().toISOString(),
-        },
-      });
-      const memberships = await db.getMembershipsByCustomerId(customer.id);
-      const allBusinesses = await db.getBusinesses();
-
-      let passes = memberships.map((m) => {
-        const biz = m.business || allBusinesses.find((b) => b.id === m.business_id);
-        const stampsNeeded = biz?.reward_rule?.stamps_needed || 6;
-        return {
-          slug: biz?.slug || 'boba-brew',
-          name: biz?.name || 'Local Cafe',
-          category: biz?.category || 'Café & Beverage',
-          brandColor: biz?.brand_color || '#0F172A',
-          stamps: m.stamps || 0,
-          totalStamps: stampsNeeded,
-          rewardTitle: biz?.reward_rule?.reward_title || 'Specialty Treat',
-          lastVisit: m.last_visit_at ? 'Recently' : 'Just joined',
-          minOrder: biz?.reward_rule?.min_order_for_stamp || biz?.min_order_for_stamp || 150,
-          passId: `REV-${m.id.slice(0, 8).toUpperCase()}`,
-          googleReviewUrl: biz?.google_review_url,
-          address: biz?.address,
-          area: biz?.area,
-        };
-      });
-
-      return NextResponse.json({
-        success: true,
-        customer,
-        memberships,
-        passes,
-        message: 'Logged in with Google! Opening your passes...',
-      });
+      return NextResponse.json(
+        { error: 'Customer Google login is discontinued. Customers access passes via registered mobile number.' },
+        { status: 400 }
+      );
     }
 
     return NextResponse.json({ error: 'Unsupported auth action' }, { status: 400 });

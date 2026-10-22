@@ -49,13 +49,7 @@ export async function GET(req: NextRequest) {
     }
 
     if (!primaryCustomer) {
-      primaryCustomer = await db.createOrGetCustomer(searchIdentifier, cleanName || undefined, undefined, {
-        email: cleanEmail || undefined,
-        phone: cleanPhone || undefined,
-        auth_user_id: userId || undefined,
-        name: cleanName || undefined,
-      });
-      matchedCustomers.push(primaryCustomer);
+      return NextResponse.json({ success: true, passes: [], customer: null });
     }
 
     const allCustomerIds = Array.from(new Set(matchedCustomers.map((c) => c.id)));

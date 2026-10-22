@@ -112,31 +112,10 @@ function AuthCallbackContent() {
         user.user_metadata?.picture ||
         undefined;
 
-      let effectiveRole = requestedRole;
-
-      // If role was not explicitly captured in URL or storage, resolve against database
-      if (!effectiveRole && user?.id) {
-        try {
-          const roleRes = await fetch(
-            `/api/auth/role?userId=${encodeURIComponent(user.id)}&email=${encodeURIComponent(user.email || '')}`
-          );
-          if (roleRes.ok) {
-            const roleData = await roleRes.json();
-            if (roleData.role) {
-              effectiveRole = roleData.role;
-            }
-          }
-        } catch {}
-      }
-
-      // Safe default: If totally unknown, ALWAYS default to 'customer', NEVER 'business'!
-      // This strictly protects against accidental merchant provisioning
-      if (!effectiveRole) {
-        effectiveRole = 'customer';
-      }
-
+      // All Supabase OAuth / Google logins are EXCLUSIVELY for Business Owners
+      const effectiveRole = 'business';
       const effectiveNext =
-        requestedNext || (effectiveRole === 'customer' ? '/c' : '/dashboard');
+        requestedNext && requestedNext !== '/c' ? requestedNext : '/dashboard';
 
       // Clear temporary pre-auth intent
       try {
@@ -145,91 +124,44 @@ function AuthCallbackContent() {
         document.cookie = 'reva_auth_intended_role=; path=/; max-age=0';
       } catch {}
 
-      // Persist active session role
+      // Persist active session role as business owner
       try {
-        localStorage.setItem('reva_auth_role', effectiveRole);
-        document.cookie = `reva_auth_role=${effectiveRole}; path=/; max-age=2592000; SameSite=Lax`;
+        localStorage.setItem('reva_auth_role', 'business');
+        document.cookie = 'reva_auth_role=business; path=/; max-age=2592000; SameSite=Lax';
+        // Clear any old customer pass data from merchant's browser
+        localStorage.removeItem('reva_customer_phone');
+        localStorage.removeItem('reva_customer_passes');
+        localStorage.removeItem('reva_customer_email');
+        localStorage.removeItem('reva_customer_name');
+        localStorage.removeItem('reva_customer_avatar');
+        localStorage.removeItem('reva_customer_auth_user_id');
+        document.cookie = 'reva_customer_phone=; path=/; max-age=0';
+        document.cookie = 'reva_customer_email=; path=/; max-age=0';
       } catch {}
 
-      if (effectiveRole === 'customer') {
-        const userEmail = user.email?.trim().toLowerCase() || '';
-        const userPhone = user.phone?.trim() || '';
-
-        // Store customer credentials in localStorage & cookies for /c portal
-        try {
-          if (userEmail) {
-            localStorage.setItem('reva_customer_email', userEmail);
-            document.cookie = `reva_customer_email=${encodeURIComponent(userEmail)}; path=/; max-age=2592000; SameSite=Lax`;
-          }
-          if (userPhone) {
-            localStorage.setItem('reva_customer_phone', userPhone);
-            document.cookie = `reva_customer_phone=${encodeURIComponent(userPhone)}; path=/; max-age=2592000; SameSite=Lax`;
-          }
-          if (rawName) {
-            localStorage.setItem('reva_customer_name', rawName);
-          }
-          if (avatarUrl) {
-            localStorage.setItem('reva_customer_avatar', avatarUrl);
-          }
-          if (user.id) {
-            localStorage.setItem('reva_customer_auth_user_id', user.id);
-          }
-          // Remove any merchant dashboard cache from customer browser
-          sessionStorage.removeItem('reva_cached_dashboard');
-          sessionStorage.removeItem('reva_cached_business_id');
-        } catch {}
-
-        try {
-          const custRes = await fetch('/api/customer/auth', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              action: 'google_login',
-              email: userEmail,
-              phone: userPhone || undefined,
-              name: rawName,
-              avatarUrl: avatarUrl,
-              auth_provider: 'google',
-              auth_user_id: user.id,
-            }),
-          });
-          const custData = await custRes.json();
-          if (custData?.passes && Array.isArray(custData.passes)) {
-            localStorage.setItem('reva_customer_passes', JSON.stringify(custData.passes));
-          }
-        } catch (e) {
-          console.error('Customer sync error:', e);
+      // Provision or sync Business Owner profile and store
+      try {
+        const syncRes = await fetch('/api/auth/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: user.id,
+            email: user.email,
+            name: rawName,
+            role: 'business',
+          }),
+        });
+        const syncData = await syncRes.json();
+        if (syncData?.business?.id) {
+          sessionStorage.setItem('reva_cached_business_id', syncData.business.id);
         }
+      } catch (e) {
+        console.error('Business sync error:', e);
+      }
 
-        if (isMounted) {
-          setStatus('redirecting');
-          router.replace(effectiveNext || '/c');
-        }
-      } else {
-        // Business owner sync
-        try {
-          const syncRes = await fetch('/api/auth/sync', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              userId: user.id,
-              email: user.email,
-              name: rawName,
-              role: 'business',
-            }),
-          });
-          const syncData = await syncRes.json();
-          if (syncData?.business?.id) {
-            sessionStorage.setItem('reva_cached_business_id', syncData.business.id);
-          }
-        } catch (e) {
-          console.error('Business sync error:', e);
-        }
-
-        if (isMounted) {
-          setStatus('redirecting');
-          router.replace(effectiveNext || '/dashboard');
-        }
+      if (isMounted) {
+        setStatus('redirecting');
+        router.replace(effectiveNext || '/dashboard');
       }
     }
 

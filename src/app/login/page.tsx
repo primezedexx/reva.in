@@ -59,13 +59,13 @@ function LoginContent() {
   // Top Level Role: 'customer' | 'business'
   const roleParam = searchParams.get('role');
   const [role, setRole] = useState<'customer' | 'business'>(() => {
-    if (roleParam === 'business') return 'business';
     if (roleParam === 'customer') return 'customer';
+    if (roleParam === 'business') return 'business';
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem('reva_auth_intended_role');
       if (stored === 'business' || stored === 'customer') return stored;
     }
-    return 'customer';
+    return 'business';
   });
 
   // Business Mode: 'login' | 'register' | 'forgot'
@@ -107,47 +107,17 @@ function LoginContent() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    // If user is already authenticated, intelligently redirect to dashboard or customer passes
+    // If user is already authenticated via Supabase, they are a Business Owner!
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session?.user) {
         const next = searchParams.get('next');
-        if (next) {
+        if (next && next !== '/c') {
           router.replace(next);
           return;
         }
 
-        const urlRole = searchParams.get('role');
-        const localIntended = typeof window !== 'undefined' ? localStorage.getItem('reva_auth_intended_role') : null;
-        const activeRole = typeof window !== 'undefined' ? localStorage.getItem('reva_auth_role') : null;
-
-        if (urlRole === 'customer' || localIntended === 'customer' || activeRole === 'customer') {
-          router.replace('/c');
-          return;
-        }
-
-        if (urlRole === 'business' || localIntended === 'business' || activeRole === 'business') {
-          router.replace('/dashboard');
-          return;
-        }
-
-        // Check user persona via server endpoint
-        try {
-          const res = await fetch(
-            `/api/auth/role?userId=${encodeURIComponent(session.user.id)}&email=${encodeURIComponent(session.user.email || '')}`
-          );
-          if (res.ok) {
-            const data = await res.json();
-            if (data.role === 'customer') {
-              router.replace('/c');
-              return;
-            } else if (data.role === 'business') {
-              router.replace('/dashboard');
-              return;
-            }
-          }
-        } catch {}
-
-        router.replace(role === 'customer' ? '/c' : '/dashboard');
+        // Supabase authenticated users always open the Business Dashboard
+        router.replace('/dashboard');
       }
     });
 
