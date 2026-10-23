@@ -5,6 +5,7 @@
 
 import Razorpay from 'razorpay';
 import crypto from 'crypto';
+import { SUBSCRIPTION_ENABLED } from '@/lib/config';
 
 export type SubscriptionPlanType = 'starter' | 'growth' | 'pro';
 
@@ -122,6 +123,24 @@ export function getSubscriptionRemainingInfo(business: {
   created_at?: string;
 } | null | undefined) {
   if (!business) return null;
+
+  // When subscriptions are suppressed (lead-gen mode):
+  // Skip trial expiry checks and paywalls. Owners get full access always.
+  if (!SUBSCRIPTION_ENABLED) {
+    const plan = business.plan || 'growth';
+    const planName = plan.charAt(0).toUpperCase() + plan.slice(1);
+    return {
+      isTrial: false,
+      plan,
+      planName,
+      daysRemaining: 99999,
+      formattedDate: 'Unlimited',
+      isExpired: false,
+      badgeText: 'Active',
+      fullStatusText: 'All features active & unlocked.',
+      shortBadge: 'Active',
+    };
+  }
 
   const isTrial = business.trial_active || business.subscription_status === 'trialing';
   const plan = business.plan || 'growth';

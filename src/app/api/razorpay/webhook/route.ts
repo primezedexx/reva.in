@@ -5,8 +5,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { db } from '@/lib/db';
+import { SUBSCRIPTION_ENABLED } from '@/lib/config';
 
 export async function POST(req: NextRequest) {
+  if (!SUBSCRIPTION_ENABLED) {
+    return NextResponse.json({ message: 'Subscriptions are currently disabled. Webhook ignored.' }, { status: 200 });
+  }
+
   try {
     const rawBody = await req.text();
     const signature = req.headers.get('x-razorpay-signature');

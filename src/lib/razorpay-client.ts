@@ -5,6 +5,7 @@
 
 import { sound } from '@/lib/sound';
 import confetti from 'canvas-confetti';
+import { SUBSCRIPTION_ENABLED } from '@/lib/config';
 
 declare global {
   interface Window {
@@ -46,6 +47,12 @@ export interface RazorpayCheckoutOptions {
 
 export async function openRazorpayCheckout(options: RazorpayCheckoutOptions) {
   const { plan, businessId, businessName, ownerEmail, onSuccess, onError, onCancel } = options;
+
+  if (!SUBSCRIPTION_ENABLED) {
+    console.warn('Subscriptions are currently disabled.');
+    onError?.('Subscriptions are currently disabled.');
+    return;
+  }
 
   try {
     sound.playClick();

@@ -50,6 +50,7 @@ import {
 import Image from 'next/image';
 import { sound } from '@/lib/sound';
 import { supabase } from '@/lib/supabase';
+import { SUBSCRIPTION_ENABLED } from '@/lib/config';
 
 export default function LandingPage() {
   const router = useRouter();
@@ -347,9 +348,11 @@ export default function LandingPage() {
             <a href="#winback" className="hover:text-[#0F172A] transition-colors">
               Win-Back System
             </a>
-            <a href="#pricing" className="hover:text-[#0F172A] transition-colors">
-              Pricing
-            </a>
+            {SUBSCRIPTION_ENABLED && (
+              <a href="#pricing" className="hover:text-[#0F172A] transition-colors">
+                Pricing
+              </a>
+            )}
           </nav>
 
           {/* Right Action Buttons */}
@@ -1134,7 +1137,7 @@ export default function LandingPage() {
                 href="/login?mode=register&trial=true"
                 className="w-full py-3 sm:py-3.5 rounded-full bg-white text-slate-900 font-semibold text-xs text-center transition-all hover:bg-slate-100 block cursor-pointer shadow-xs uppercase tracking-wide"
               >
-                Start 30-Day Free Trial
+                {SUBSCRIPTION_ENABLED ? 'Start 30-Day Free Trial' : 'Get Started Free'}
               </Link>
             </div>
           </div>
@@ -1302,7 +1305,8 @@ export default function LandingPage() {
       {/* ========================================================================= */}
       {/* 7. TRANSPARENT PRICING */}
       {/* ========================================================================= */}
-      <section id="pricing" className="py-16 sm:py-24 px-4 sm:px-10 max-w-6xl w-full mx-auto space-y-10 sm:space-y-12">
+      {SUBSCRIPTION_ENABLED && (
+        <section id="pricing" className="py-16 sm:py-24 px-4 sm:px-10 max-w-6xl w-full mx-auto space-y-10 sm:space-y-12">
         <div className="text-center max-w-xl mx-auto space-y-3">
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-mono font-semibold">
             <span>ANNUAL PLANS</span>
@@ -1480,6 +1484,7 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
+      )}
 
       {/* ========================================================================= */}
       {/* 8. FAQ SECTION */}
@@ -1560,7 +1565,7 @@ export default function LandingPage() {
             href="/login?mode=register&trial=true"
             className="w-full sm:w-auto px-8 py-3.5 rounded-full bg-[#0F172A] hover:bg-black text-white font-semibold text-xs sm:text-sm transition-all inline-flex items-center justify-center gap-2 shadow-md cursor-pointer uppercase tracking-wider active:scale-98"
           >
-            <span>Start 30-Day Free Trial</span>
+            <span>{SUBSCRIPTION_ENABLED ? 'Start 30-Day Free Trial' : 'Get Started Free'}</span>
             <ArrowRight className="w-4 h-4" />
           </Link>
         </div>

@@ -42,6 +42,7 @@ import { sound } from '@/lib/sound';
 import { compressImageFile } from '@/lib/image-compress';
 import PrivacySecurityModal from '@/components/PrivacySecurityModal';
 import CounterQrStandModal from '@/components/CounterQrStandModal';
+import { SUBSCRIPTION_ENABLED, getGrowRestaurantWhatsAppUrl } from '@/lib/config';
 
 const InstagramIcon = ({ className = 'w-4 h-4' }: { className?: string }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -448,37 +449,70 @@ export default function SettingsSection({
         </div>
 
         <div className="bg-white rounded-3xl border border-slate-100 card-soft-shadow divide-y divide-slate-100 overflow-hidden">
-          {/* Subscription & Billing */}
-          <button
-            type="button"
-            onClick={() => {
-              sound.playClick();
-              onOpenPlanModal();
-            }}
-            className="w-full text-left p-4 flex items-center justify-between hover:bg-slate-50 transition-colors cursor-pointer group"
-          >
-            <div className="flex items-center gap-3.5">
-              <div className="w-10 h-10 rounded-2xl bg-slate-50 text-slate-700 flex items-center justify-center shrink-0 border border-slate-200/80 group-hover:scale-105 group-hover:border-slate-300 transition-all">
-                <CreditCard className="w-4 h-4 text-slate-700" />
-              </div>
-              <div>
-                <div className="font-display font-bold text-xs sm:text-sm text-slate-900">
-                  Subscription &amp; Billing
+          {/* Subscription & Billing OR Marketing Growth Services */}
+          {SUBSCRIPTION_ENABLED ? (
+            <button
+              type="button"
+              onClick={() => {
+                sound.playClick();
+                onOpenPlanModal();
+              }}
+              className="w-full text-left p-4 flex items-center justify-between hover:bg-slate-50 transition-colors cursor-pointer group"
+            >
+              <div className="flex items-center gap-3.5">
+                <div className="w-10 h-10 rounded-2xl bg-slate-50 text-slate-700 flex items-center justify-center shrink-0 border border-slate-200/80 group-hover:scale-105 group-hover:border-slate-300 transition-all">
+                  <CreditCard className="w-4 h-4 text-slate-700" />
                 </div>
-                <div className="text-xs text-slate-400">
-                  {subInfo?.isTrial
-                    ? '30-Day Free Trial • Upgrade to 1-Year License'
-                    : '1-Year active merchant plan with GST invoices'}
+                <div>
+                  <div className="font-display font-bold text-xs sm:text-sm text-slate-900">
+                    Subscription &amp; Billing
+                  </div>
+                  <div className="text-xs text-slate-400">
+                    {subInfo?.isTrial
+                      ? '30-Day Free Trial • Upgrade to 1-Year License'
+                      : '1-Year active merchant plan with GST invoices'}
+                  </div>
                 </div>
               </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-mono font-medium text-slate-700 bg-slate-100 border border-slate-200/80 px-2.5 py-0.5 rounded-full">
-                {subInfo?.badgeText || 'Active'}
-              </span>
-              <ChevronRight className="w-4 h-4 text-slate-400" />
-            </div>
-          </button>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-mono font-medium text-slate-700 bg-slate-100 border border-slate-200/80 px-2.5 py-0.5 rounded-full">
+                  {subInfo?.badgeText || 'Active'}
+                </span>
+                <ChevronRight className="w-4 h-4 text-slate-400" />
+              </div>
+            </button>
+          ) : (
+            <a
+              href={getGrowRestaurantWhatsAppUrl(business?.name)}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => sound.playClick()}
+              className="w-full text-left p-4 flex items-center justify-between hover:bg-slate-50 transition-colors cursor-pointer group"
+            >
+              <div className="flex items-center gap-3.5">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0 border border-emerald-200/80 group-hover:scale-105 group-hover:border-emerald-300 transition-all">
+                  <Sparkles className="w-4 h-4 text-emerald-600" />
+                </div>
+                <div>
+                  <div className="font-display font-bold text-xs sm:text-sm text-slate-900 flex items-center gap-2">
+                    <span>Grow Your Restaurant</span>
+                    <span className="text-[9px] font-mono font-bold uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                      Marketing
+                    </span>
+                  </div>
+                  <div className="text-xs text-slate-400">
+                    Social media &amp; digital marketing services for your restaurant
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-mono font-medium text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2.5 py-0.5 rounded-full">
+                  Talk to us
+                </span>
+                <ChevronRight className="w-4 h-4 text-slate-400" />
+              </div>
+            </a>
+          )}
 
           {/* Privacy & Security */}
           <button

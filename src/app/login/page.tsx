@@ -51,6 +51,7 @@ import {
   signInWithGoogleClient,
 } from '@/lib/firebase';
 import type { ConfirmationResult } from 'firebase/auth';
+import { SUBSCRIPTION_ENABLED } from '@/lib/config';
 
 function LoginContent() {
   const router = useRouter();
@@ -538,7 +539,11 @@ function LoginContent() {
       }
 
       sound.playRewardFanfare();
-      setSuccessMessage('🎉 30-Day Free Trial started! Opening your dashboard...');
+      setSuccessMessage(
+        SUBSCRIPTION_ENABLED
+          ? '🎉 30-Day Free Trial started! Opening your dashboard...'
+          : '🎉 Business registered! Opening your dashboard...'
+      );
       router.replace(`/dashboard?businessId=${result.business?.id || ''}&new=true`);
     } catch (err: unknown) {
       console.error('Registration exception:', err);
@@ -1075,7 +1080,8 @@ function LoginContent() {
             {/* MODE B: REGISTER STORE */}
             {mode === 'register' && (
               <form onSubmit={handleRegisterSubmit} className="w-full space-y-3.5">
-                <div>
+                {SUBSCRIPTION_ENABLED && (
+                  <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <label className="block text-xs font-semibold text-slate-700">
                       Select Plan (30-Day Free Trial)
@@ -1145,6 +1151,7 @@ function LoginContent() {
                     </button>
                   </div>
                 </div>
+                )}
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
@@ -1240,7 +1247,13 @@ function LoginContent() {
                 <div className="p-2.5 bg-emerald-50 rounded-xl border border-emerald-200 text-[11px] text-emerald-900 flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
                     <Check className="w-4 h-4 text-emerald-600 shrink-0 stroke-[3]" />
-                    <span><b>30-Day Free Trial</b> • No card required upfront</span>
+                    <span>
+                      {SUBSCRIPTION_ENABLED ? (
+                        <><b>30-Day Free Trial</b> • No card required upfront</>
+                      ) : (
+                        <><b>Free Instant Setup</b> • No card required</>
+                      )}
+                    </span>
                   </div>
                   <span className="font-mono text-[9px] font-bold text-emerald-800 uppercase">Instant</span>
                 </div>
@@ -1253,11 +1266,11 @@ function LoginContent() {
                   {isLoading ? (
                     <span className="flex items-center gap-2">
                       <div className="w-3.5 h-3.5 rounded-full border-2 border-white border-t-transparent animate-spin" />
-                      <span>Starting Free Trial...</span>
+                      <span>{SUBSCRIPTION_ENABLED ? 'Starting Free Trial...' : 'Setting up...'}</span>
                     </span>
                   ) : (
                     <>
-                      <span>Start 30-Day Free Trial</span>
+                      <span>{SUBSCRIPTION_ENABLED ? 'Start 30-Day Free Trial' : 'Register Your Business'}</span>
                       <ArrowRight className="w-4 h-4" />
                     </>
                   )}

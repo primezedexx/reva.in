@@ -152,6 +152,7 @@ import {
   PLAN_PRICING,
   SubscriptionPlanType,
 } from '@/lib/razorpay';
+import { SUBSCRIPTION_ENABLED, getGrowRestaurantWhatsAppUrl } from '@/lib/config';
 
 const PRESET_STOREFRONT_PHOTOS = [
   { label: 'Artisan Cafe', url: 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=400&auto=format&fit=crop&q=80', desc: 'Warm cozy coffee shop' },
@@ -2346,6 +2347,19 @@ function OwnerDashboardContent() {
 
           {/* Right Action Menu */}
           <div className="flex items-center gap-2 shrink-0">
+            {!SUBSCRIPTION_ENABLED && (
+              <a
+                href={getGrowRestaurantWhatsAppUrl(selectedBusiness?.name)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold transition-all shadow-xs cursor-pointer"
+                title="Talk to us on WhatsApp (8080004929)"
+              >
+                <MessageSquare className="w-3.5 h-3.5 fill-current" />
+                <span className="hidden sm:inline">Grow your restaurant, talk to us</span>
+                <span className="sm:hidden">Grow with us</span>
+              </a>
+            )}
             {/* Options Menu Button (Three Dots) */}
             {authUser ? (
               <div className="relative">
@@ -2395,50 +2409,87 @@ function OwnerDashboardContent() {
                       )}
                     </div>
 
-                    {/* "YOUR PLAN" SUBSCRIPTION SECTION */}
-                    <div className="p-3.5 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-[#0F172A] text-white space-y-2.5 shadow-md">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5">
-                          <CreditCard className="w-4 h-4 text-amber-400" />
-                          <span className="text-[11px] font-mono uppercase font-bold tracking-wider text-slate-300">Your Plan</span>
+                    {/* "YOUR PLAN" SUBSCRIPTION SECTION OR LEAD-GEN GROWTH SERVICES */}
+                    {SUBSCRIPTION_ENABLED ? (
+                      <div className="p-3.5 rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-[#0F172A] text-white space-y-2.5 shadow-md">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <CreditCard className="w-4 h-4 text-amber-400" />
+                            <span className="text-[11px] font-mono uppercase font-bold tracking-wider text-slate-300">Your Plan</span>
+                          </div>
+                          <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${subInfo?.isTrial ? 'bg-amber-400/20 text-amber-300 border border-amber-400/30' : 'bg-emerald-400/20 text-emerald-300 border border-emerald-400/30'}`}>
+                            {subInfo?.isTrial ? '30-Day Trial' : 'Active License'}
+                          </span>
                         </div>
-                        <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${subInfo?.isTrial ? 'bg-amber-400/20 text-amber-300 border border-amber-400/30' : 'bg-emerald-400/20 text-emerald-300 border border-emerald-400/30'}`}>
-                          {subInfo?.isTrial ? '30-Day Trial' : 'Active License'}
-                        </span>
-                      </div>
 
-                      <div className="flex items-baseline justify-between pt-0.5">
-                        <div className="font-display font-bold text-base text-white">
-                          {subInfo?.planName.toUpperCase()} PLAN
+                        <div className="flex items-baseline justify-between pt-0.5">
+                          <div className="font-display font-bold text-base text-white">
+                            {subInfo?.planName.toUpperCase()} PLAN
+                          </div>
+                          <div className="text-[11px] font-mono text-slate-300">
+                            {selectedBusiness?.plan === 'starter' ? '₹499/yr' : selectedBusiness?.plan === 'pro' ? '₹1,499/yr' : '₹999/yr'}
+                          </div>
                         </div>
-                        <div className="text-[11px] font-mono text-slate-300">
-                          {selectedBusiness?.plan === 'starter' ? '₹499/yr' : selectedBusiness?.plan === 'pro' ? '₹1,499/yr' : '₹999/yr'}
-                        </div>
-                      </div>
 
-                      <div className="space-y-1 bg-white/5 p-2 rounded-xl border border-white/10 text-[11px] text-slate-300">
-                        <div className="flex items-center gap-1.5 font-semibold text-white">
-                          <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                          <span>{subInfo?.badgeText}</span>
+                        <div className="space-y-1 bg-white/5 p-2 rounded-xl border border-white/10 text-[11px] text-slate-300">
+                          <div className="flex items-center gap-1.5 font-semibold text-white">
+                            <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                            <span>{subInfo?.badgeText}</span>
+                          </div>
+                          <div className="text-[10px] text-slate-400 font-mono">
+                            {subInfo?.isTrial ? `Trial ends: ${subInfo?.formattedDate}` : `Valid until: ${subInfo?.formattedDate}`}
+                          </div>
                         </div>
-                        <div className="text-[10px] text-slate-400 font-mono">
-                          {subInfo?.isTrial ? `Trial ends: ${subInfo?.formattedDate}` : `Valid until: ${subInfo?.formattedDate}`}
-                        </div>
-                      </div>
 
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowUserDropdown(false);
-                          setShowPlanModal(true);
-                          sound.playClick();
-                        }}
-                        className="w-full py-2 px-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-bold transition-all cursor-pointer shadow-xs flex items-center justify-center gap-1.5 active:scale-98"
-                      >
-                        <Zap className="w-3.5 h-3.5 fill-slate-950" />
-                        <span>{subInfo?.isTrial ? 'Upgrade & Activate Now' : 'Manage / Renew Plan'}</span>
-                      </button>
-                    </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowUserDropdown(false);
+                            setShowPlanModal(true);
+                            sound.playClick();
+                          }}
+                          className="w-full py-2 px-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 text-xs font-bold transition-all cursor-pointer shadow-xs flex items-center justify-center gap-1.5 active:scale-98"
+                        >
+                          <Zap className="w-3.5 h-3.5 fill-slate-950" />
+                          <span>{subInfo?.isTrial ? 'Upgrade & Activate Now' : 'Manage / Renew Plan'}</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="p-3.5 rounded-2xl bg-gradient-to-br from-emerald-950 via-slate-900 to-[#0F172A] text-white space-y-2.5 shadow-md border border-emerald-500/20">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <Sparkles className="w-4 h-4 text-emerald-400" />
+                            <span className="text-[11px] font-mono uppercase font-bold tracking-wider text-emerald-300">Restaurant Growth</span>
+                          </div>
+                          <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-400/20 text-emerald-300 border border-emerald-400/30">
+                            Partner Services
+                          </span>
+                        </div>
+
+                        <div>
+                          <div className="font-display font-bold text-sm text-white">
+                            Grow Your Restaurant
+                          </div>
+                          <p className="text-[11px] text-slate-300 mt-1 leading-relaxed">
+                            Need help with Instagram reels, local digital ads, or social media management? We help restaurant owners scale.
+                          </p>
+                        </div>
+
+                        <a
+                          href={getGrowRestaurantWhatsAppUrl(selectedBusiness?.name)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={() => {
+                            setShowUserDropdown(false);
+                            sound.playClick();
+                          }}
+                          className="w-full py-2.5 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold transition-all cursor-pointer shadow-xs flex items-center justify-center gap-1.5 active:scale-98"
+                        >
+                          <MessageSquare className="w-3.5 h-3.5 fill-slate-950" />
+                          <span>Grow your restaurant, talk to us</span>
+                        </a>
+                      </div>
+                    )}
 
                     {/* CUSTOMIZE CAFE & PASS BUTTON */}
                     <button
@@ -2570,7 +2621,11 @@ function OwnerDashboardContent() {
               <Sparkles className="w-5 h-5 text-amber-300 shrink-0" />
               <div>
                 <div className="font-display font-bold text-sm">🎉 Congratulations! {selectedBusiness?.name} is live!</div>
-                <div className="text-xs text-emerald-100 font-medium">Your store loyalty pass QR code and counter tools are ready to use with your 30-day free trial.</div>
+                <div className="text-xs text-emerald-100 font-medium">
+                  {SUBSCRIPTION_ENABLED
+                    ? 'Your store loyalty pass QR code and counter tools are ready to use with your 30-day free trial.'
+                    : 'Your store loyalty pass QR code and counter tools are ready to use.'}
+                </div>
               </div>
             </div>
             <button
@@ -5517,7 +5572,7 @@ function OwnerDashboardContent() {
         {/* ========================================================================= */}
         {/* PLAN & SUBSCRIPTION MODAL (UPGRADE & RENEWAL POWERED BY RAZORPAY) */}
         {/* ========================================================================= */}
-        {showPlanModal && (
+        {SUBSCRIPTION_ENABLED && showPlanModal && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-2xl w-full card-soft-shadow border border-slate-100 space-y-6 animate-stamp max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between border-b border-slate-100 pb-4">

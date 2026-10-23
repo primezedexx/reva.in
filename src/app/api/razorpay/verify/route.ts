@@ -5,8 +5,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyRazorpaySignature, SubscriptionPlanType, PLAN_PRICING } from '@/lib/razorpay';
 import { db } from '@/lib/db';
+import { SUBSCRIPTION_ENABLED } from '@/lib/config';
 
 export async function POST(req: NextRequest) {
+  if (!SUBSCRIPTION_ENABLED) {
+    return NextResponse.json(
+      { error: 'Subscriptions are currently disabled.' },
+      { status: 403 }
+    );
+  }
+
   try {
     const body = await req.json();
     const {
