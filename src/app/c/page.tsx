@@ -540,6 +540,7 @@ function CustomerPortalContent() {
     rewardTitle: string;
     code: string;
   } | null>(null);
+  const [isClaimingReward, setIsClaimingReward] = useState(false);
 
   // 24-Hour Cooldown Popup Modal
   const [cooldownModal, setCooldownModal] = useState<{
@@ -1203,23 +1204,11 @@ function CustomerPortalContent() {
                     redeemedAt: sc.redeemed_at,
                   }));
 
-                  setClaimedRewards((prev) => {
-                    const mergedMap = new Map<string, any>();
-                    (prev || []).forEach((item) => {
-                      const k = item.voucherCode || item.id;
-                      if (k) mergedMap.set(k, item);
-                    });
-                    mapped.forEach((sc: any) => {
-                      const k = sc.voucherCode || sc.id;
-                      const existing = k ? mergedMap.get(k) : null;
-                      mergedMap.set(k || sc.id, { ...existing, ...sc });
-                    });
-                    const merged = Array.from(mergedMap.values());
-                    try {
-                      localStorage.setItem('reva_claimed_rewards', JSON.stringify(merged));
-                    } catch {}
-                    return merged;
-                  });
+                  // Server-verified claims: drop phantom unverified codes from previous attempts
+                  setClaimedRewards(mapped);
+                  try {
+                    localStorage.setItem('reva_claimed_rewards', JSON.stringify(mapped));
+                  } catch {}
                 }
               })
               .catch(() => {});
@@ -1291,23 +1280,11 @@ function CustomerPortalContent() {
                   redeemedAt: sc.redeemed_at,
                 }));
 
-                setClaimedRewards((prev) => {
-                  const mergedMap = new Map<string, any>();
-                  (prev || []).forEach((item) => {
-                    const k = item.voucherCode || item.id;
-                    if (k) mergedMap.set(k, item);
-                  });
-                  mapped.forEach((sc: any) => {
-                    const k = sc.voucherCode || sc.id;
-                    const existing = k ? mergedMap.get(k) : null;
-                    mergedMap.set(k || sc.id, { ...existing, ...sc });
-                  });
-                  const merged = Array.from(mergedMap.values());
-                  try {
-                    localStorage.setItem('reva_claimed_rewards', JSON.stringify(merged));
-                  } catch {}
-                  return merged;
-                });
+                // Authoritative database sync: replace claimedRewards so phantom/waste codes are eliminated
+                setClaimedRewards(mapped);
+                try {
+                  localStorage.setItem('reva_claimed_rewards', JSON.stringify(mapped));
+                } catch {}
               }
 
               // Update Phone: ONLY set if session actually has a valid phone number (10+ digits, no @)
@@ -2251,142 +2228,138 @@ function CustomerPortalContent() {
     const needed = reward.totalNeeded || targetPass?.totalStamps || 6;
     const current = targetPass?.stamps || 0;
 
+    // 1. Prevent duplicate voucher codes: If customer already has an active pending code, reopen it!
+    const existingPending = (claimedRewards || []).find(
+      (c) => c.businessSlug === reward.businessSlug && c.status === 'PENDING'
+    );
+    if (existingPending) {
+      setRedeemingReward({
+        id: reward.id,
+        businessName: existingPending.businessName || reward.businessName,
+        businessSlug: existingPending.businessSlug || reward.businessSlug,
+        rewardTitle: existingPending.rewardTitle || reward.rewardTitle,
+        code: existingPending.voucherCode,
+      });
+      return;
+    }
+
     if (current < needed) {
       alert(`You need ${needed} stamps to claim this reward (you currently have ${current} on this card). Keep collecting stamps!`);
       return;
     }
 
-    sound.playRewardFanfare();
-    confetti({
-      particleCount: 120,
-      spread: 80,
-      origin: { y: 0.6 },
-    });
+    if (isClaimingReward) return;
+    setIsClaimingReward(true);
 
     const code = Math.floor(100000 + Math.random() * 900000).toString();
-
-    // 1. Keep the pass in userPasses and deduct needed stamps ONLY on the target pass
     const passMembershipId = (targetPass as any)?.membershipId || (targetPass as any)?.membership_id || (targetPass as any)?.id || targetPass?.passId;
     const targetBusId = (targetPass as any)?.business_id || (targetPass as any)?.businessId || reward.businessSlug;
     const targetPassId = reward.passId || targetPass?.id;
     const targetRewardId = targetPass?.rewardId || reward.rewardId;
 
     const isMatchPass = (p: any) => {
-      if (targetPassId && p.id === targetPassId) return true;
-      if (
-        p.slug === reward.businessSlug &&
-        p.rewardTitle?.toLowerCase().trim() === reward.rewardTitle?.toLowerCase().trim()
-      ) {
-        return true;
-      }
+      if (targetPassId && (p.id === targetPassId || p.membershipId === targetPassId || p.passId === targetPassId)) return true;
+      if (p.slug === reward.businessSlug) return true;
       return false;
     };
 
-    const deduct = needed;
-
-    setUserPasses((prev) => {
-      const updated = prev.map((pass) => {
-        if (isMatchPass(pass)) {
-          return {
-            ...pass,
-            stamps: Math.max(0, (pass.stamps || 0) - deduct),
-            cycle: (pass.cycle || 1) + 1,
-          };
-        }
-        return pass;
-      });
-      try {
-        localStorage.setItem('reva_customer_passes', JSON.stringify(updated));
-      } catch {}
-      return updated;
-    });
-
-    // 2. Add to claimedRewards history
-    const nowTimeStr = new Date().toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-
-    const newClaim: ClaimedReward = {
-      id: `claim_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      businessName: reward.businessName,
-      businessSlug: reward.businessSlug,
-      rewardTitle: reward.rewardTitle,
-      claimedAt: nowTimeStr,
-      voucherCode: code,
-      status: 'PENDING',
-    };
-
-    setClaimedRewards((prev) => {
-      const updated = [newClaim, ...prev.filter((c) => c.voucherCode !== code)];
-      try {
-        localStorage.setItem('reva_claimed_rewards', JSON.stringify(updated));
-      } catch {}
-      return updated;
-    });
-
-    // 3. Remove from local unlocked rewards state immediately
-    setUnlockedRewards((prev) => {
-      const updated = prev.filter((r) => r.id !== reward.id);
-      try {
-        localStorage.setItem('reva_unlocked_rewards', JSON.stringify(updated));
-      } catch {}
-      return updated;
-    });
-
-    // 4. Open redemption voucher modal
-    setRedeemingReward({
-      id: reward.id,
-      businessName: reward.businessName,
-      businessSlug: reward.businessSlug,
-      rewardTitle: reward.rewardTitle,
-      code,
-    });
-
-    // 5. Sync redemption with backend database
     try {
-      if (passMembershipId || reward.businessSlug) {
-        const res = await fetch('/api/reward/redeem', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            membershipId: passMembershipId,
-            businessId: targetBusId,
-            rewardDesc: reward.rewardTitle,
-            verifiedBy: 'customer_claim',
-            voucherCode: code,
-            status: 'PENDING',
-            rewardId: targetRewardId || undefined,
-          }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.membership) {
-            setUserPasses((prev) => {
-              const updated = prev.map((pass) => {
-                if (isMatchPass(pass)) {
-                  // If it was the primary pass, sync with membership.stamps; if extra pass, keep deducted stamps
-                  const isPrimary = !pass.rewardId || pass.rewardId === 'primary';
-                  return {
-                    ...pass,
-                    stamps: isPrimary && data.membership.stamps !== undefined ? data.membership.stamps : Math.max(0, (pass.stamps || 0)),
-                    cycle: (pass.cycle || 1) + 1,
-                  };
-                }
-                return pass;
-              });
-              try {
-                localStorage.setItem('reva_customer_passes', JSON.stringify(updated));
-              } catch {}
-              return updated;
-            });
-          }
-        }
+      // 2. Call backend FIRST to verify & deduct stamps in the database
+      const res = await fetch('/api/reward/redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          membershipId: passMembershipId,
+          businessId: targetBusId,
+          rewardDesc: reward.rewardTitle || 'Store Reward',
+          verifiedBy: 'customer_claim',
+          voucherCode: code,
+          status: 'PENDING',
+          rewardId: targetRewardId || undefined,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        alert(data.error || 'Cannot claim reward right now. Please ensure your card has completed required stamps.');
+        setIsClaimingReward(false);
+        return;
       }
-    } catch (err) {
-      console.error('Error redeeming reward:', err);
+
+      // 3. ONLY ON SERVER SUCCESS: Save the verified voucher code
+      const confirmedCode = data.claim?.voucher_code || code;
+      const nowTimeStr = new Date().toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+
+      const newClaim: ClaimedReward = {
+        id: data.claim?.id || `claim_${Date.now()}`,
+        businessName: reward.businessName,
+        businessSlug: reward.businessSlug,
+        rewardTitle: reward.rewardTitle,
+        claimedAt: nowTimeStr,
+        voucherCode: confirmedCode,
+        status: 'PENDING',
+      };
+
+      setClaimedRewards((prev) => {
+        const updated = [newClaim, ...(prev || []).filter((c) => c.voucherCode !== confirmedCode)];
+        try {
+          localStorage.setItem('reva_claimed_rewards', JSON.stringify(updated));
+        } catch {}
+        return updated;
+      });
+
+      // 4. Update user passes to 0 stamps immediately
+      setUserPasses((prev) => {
+        const updated = prev.map((pass) => {
+          if (isMatchPass(pass)) {
+            const isPrimary = !pass.rewardId || pass.rewardId === 'primary';
+            return {
+              ...pass,
+              stamps: isPrimary && data.membership?.stamps !== undefined ? data.membership.stamps : Math.max(0, (pass.stamps || 0) - needed),
+              cycle: (pass.cycle || 1) + 1,
+            };
+          }
+          return pass;
+        });
+        try {
+          localStorage.setItem('reva_customer_passes', JSON.stringify(updated));
+        } catch {}
+        return updated;
+      });
+
+      // 5. Remove from local unlocked rewards state
+      setUnlockedRewards((prev) => {
+        const updated = prev.filter((r) => r.id !== reward.id);
+        try {
+          localStorage.setItem('reva_unlocked_rewards', JSON.stringify(updated));
+        } catch {}
+        return updated;
+      });
+
+      sound.playRewardFanfare();
+      confetti({
+        particleCount: 120,
+        spread: 80,
+        origin: { y: 0.6 },
+      });
+
+      // 6. Open redemption voucher modal with verified code
+      setRedeemingReward({
+        id: reward.id,
+        businessName: reward.businessName,
+        businessSlug: reward.businessSlug,
+        rewardTitle: reward.rewardTitle,
+        code: confirmedCode,
+      });
+    } catch {
+      alert('Network error claiming reward. Please check your connection and try again.');
+    } finally {
+      setIsClaimingReward(false);
     }
   };
 
@@ -3809,40 +3782,94 @@ function CustomerPortalContent() {
                     <p className="text-xs text-slate-500">Your past claimed vouchers will show here.</p>
                   </div>
                 ) : (
-                  claimedRewards.map((hist) => (
-                    <div
-                      key={hist.id}
-                      className={`rounded-2xl p-3.5 border flex items-center justify-between ${
-                        isDarkMode
-                          ? 'bg-slate-900/60 border-slate-800'
-                          : 'bg-white border-slate-200/80 shadow-2xs'
-                      }`}
-                    >
-                      <div className="space-y-0.5">
-                        <div className="text-[10px] font-mono text-slate-400">
-                          {hist.businessName}
+                  <>
+                    {claimedRewards.some((c) => c.status === 'PENDING') && (
+                      <div className="flex items-center justify-between pb-1">
+                        <span className="text-[11px] text-slate-500 font-medium">Your vouchers</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setClaimedRewards((prev) => {
+                              const updated = prev.filter((c) => c.status === 'REDEEMED');
+                              try {
+                                localStorage.setItem('reva_claimed_rewards', JSON.stringify(updated));
+                              } catch {}
+                              return updated;
+                            });
+                          }}
+                          className="text-[11px] text-rose-500 hover:text-rose-700 font-bold underline cursor-pointer"
+                        >
+                          Clear unused / invalid codes
+                        </button>
+                      </div>
+                    )}
+                    {claimedRewards.map((hist) => (
+                      <div
+                        key={hist.id}
+                        className={`rounded-2xl p-3.5 border flex items-center justify-between gap-2 ${
+                          isDarkMode
+                            ? 'bg-slate-900/60 border-slate-800'
+                            : 'bg-white border-slate-200/80 shadow-2xs'
+                        }`}
+                      >
+                        <div className="space-y-0.5 min-w-0 flex-1">
+                          <div className="text-[10px] font-mono text-slate-400 truncate">
+                            {hist.businessName}
+                          </div>
+                          <h4 className="font-display font-bold text-xs leading-tight truncate">
+                            {hasCustomRewardTitle(hist.rewardTitle) ? hist.rewardTitle : 'Store Reward'}
+                          </h4>
+                          <div className="text-[10px] text-slate-500 flex items-center gap-1.5 font-mono flex-wrap">
+                            <span>Code: <b className="text-slate-800 dark:text-slate-200 tracking-wider">{hist.voucherCode}</b></span>
+                            <span>•</span>
+                            <span>{hist.claimedAt}</span>
+                          </div>
                         </div>
-                        <h4 className="font-display font-bold text-xs leading-tight">
-                          {hist.rewardTitle}
-                        </h4>
-                        <div className="text-[10px] text-slate-500 flex items-center gap-1.5 font-mono">
-                          <span>Code: <b className="text-slate-800 dark:text-slate-200 tracking-wider">{hist.voucherCode}</b></span>
-                          <span>•</span>
-                          <span>{hist.claimedAt}</span>
+
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {hist.status === 'REDEEMED' ? (
+                            <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 px-2 py-0.5 rounded-md">
+                              REDEEMED
+                            </span>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setRedeemingReward({
+                                    id: hist.id,
+                                    businessName: hist.businessName,
+                                    businessSlug: hist.businessSlug,
+                                    rewardTitle: hasCustomRewardTitle(hist.rewardTitle) ? hist.rewardTitle : 'Store Reward',
+                                    code: hist.voucherCode,
+                                  });
+                                }}
+                                className="text-[10px] font-mono font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 px-2.5 py-1 rounded-md cursor-pointer transition-all active:scale-95"
+                              >
+                                SHOW CODE
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setClaimedRewards((prev) => {
+                                    const updated = prev.filter((c) => c.voucherCode !== hist.voucherCode && c.id !== hist.id);
+                                    try {
+                                      localStorage.setItem('reva_claimed_rewards', JSON.stringify(updated));
+                                    } catch {}
+                                    return updated;
+                                  });
+                                }}
+                                className="text-xs text-slate-400 hover:text-rose-500 p-1 cursor-pointer transition-colors"
+                                title="Dismiss invalid code"
+                              >
+                                ✕
+                              </button>
+                            </>
+                          )}
                         </div>
                       </div>
-
-                      {hist.status === 'REDEEMED' ? (
-                        <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 px-2 py-0.5 rounded-md">
-                          REDEEMED
-                        </span>
-                      ) : (
-                        <span className="text-[10px] font-mono font-bold text-amber-700 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 px-2 py-0.5 rounded-md">
-                          PENDING
-                        </span>
-                      )}
-                    </div>
-                  ))
+                    ))}
+                  </>
                 )}
               </div>
             )}

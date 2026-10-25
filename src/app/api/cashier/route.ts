@@ -92,7 +92,7 @@ export async function POST(req: NextRequest) {
     // Action 1: Redeem Reward
     if (action === 'redeem') {
       const rewardDesc = business.reward_rule.reward_title || 'Free Milestone Reward';
-      const claim = await db.claimReward(targetMemId, businessId, rewardDesc, 'cashier_counter');
+      const claim = await db.claimReward(targetMemId, businessId, rewardDesc, 'cashier_counter', undefined, 'REDEEMED');
       
       const updatedMem = await db.getMembershipById(targetMemId);
       const customer = updatedMem ? await db.getCustomerById(updatedMem.customer_id) : null;

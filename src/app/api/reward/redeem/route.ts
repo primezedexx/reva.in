@@ -36,7 +36,8 @@ export async function POST(req: NextRequest) {
       rewardId
     );
 
-    const updatedMem = await db.getMembershipById(membershipId);
+    const targetMemId = claim.membership_id || membershipId;
+    const updatedMem = await db.getMembershipById(targetMemId);
 
     return NextResponse.json(
       {
