@@ -56,6 +56,7 @@ import {
   Info,
   Timer,
   AlertCircle,
+  Ticket,
 } from 'lucide-react';
 import { sound } from '@/lib/sound';
 import { supabase } from '@/lib/supabase';
@@ -1436,8 +1437,12 @@ function CustomerPortalContent() {
       const needed = pass.totalStamps || pass.reward_rule?.stamps_needed || 6;
       const current = pass.stamps || 0;
 
-      // Full Card Loyalty Reward Unlocked ONLY when THIS specific pass completes all required stamps
-      if (current >= needed && current > 0) {
+      const hasPendingClaim = (claimedRewards || []).some(
+        (c) => c.businessSlug === pass.slug && c.status === 'PENDING'
+      );
+
+      // Full Card Loyalty Reward Unlocked ONLY when THIS specific pass completes all required stamps AND is not already claimed
+      if (current >= needed && current > 0 && !hasPendingClaim) {
         derived.push({
           id: `reward_${pass.slug}_${pass.id || pass.rewardId || 'primary'}_${needed}`,
           passId: pass.id,
@@ -2836,73 +2841,116 @@ function CustomerPortalContent() {
                         </div>
 
                         {/* Reward Banner / Status Action */}
-                        {selectedPass.stamps >= selectedPass.totalStamps ? (
-                          <div className="bg-amber-400 text-slate-950 rounded-2xl p-3.5 flex items-center justify-between gap-2 shadow-md">
-                            <div className="min-w-0">
-                              <div className="text-[10px] font-mono uppercase font-bold tracking-wider text-slate-800">
-                                🎉 Reward Unlocked
+                        {(() => {
+                          const existingPendingForPass = (claimedRewards || []).find(
+                            (c) => c.businessSlug === selectedPass.slug && c.status === 'PENDING'
+                          );
+
+                          if (existingPendingForPass) {
+                            return (
+                              <div className="bg-amber-400 text-slate-950 rounded-2xl p-3.5 flex items-center justify-between gap-2 shadow-md">
+                                <div className="min-w-0">
+                                  <div className="text-[10px] font-mono uppercase font-bold tracking-wider text-slate-800 flex items-center gap-1">
+                                    <Ticket className="w-3.5 h-3.5" />
+                                    <span>Reward Claimed • Ready at Counter</span>
+                                  </div>
+                                  <div className="text-xs font-bold font-mono tracking-wider truncate">
+                                    Code: {existingPendingForPass.voucherCode}
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setRedeemingReward({
+                                      id: existingPendingForPass.id,
+                                      businessName: existingPendingForPass.businessName || selectedPass.name,
+                                      businessSlug: existingPendingForPass.businessSlug || selectedPass.slug,
+                                      rewardTitle: existingPendingForPass.rewardTitle || 'Store Reward',
+                                      code: existingPendingForPass.voucherCode,
+                                    })
+                                  }
+                                  className="px-3.5 py-1.5 rounded-xl bg-slate-950 hover:bg-black text-white font-display font-bold text-xs shadow-xs shrink-0 cursor-pointer active:scale-95 transition-all"
+                                >
+                                  Show Code
+                                </button>
                               </div>
-                              <div className="text-xs font-bold truncate">
-                                {hasCustomRewardTitle(selectedPass.rewardTitle) ? selectedPass.rewardTitle : 'Store Reward'}
+                            );
+                          }
+
+                          if (selectedPass.stamps >= selectedPass.totalStamps) {
+                            return (
+                              <div className="bg-amber-400 text-slate-950 rounded-2xl p-3.5 flex items-center justify-between gap-2 shadow-md">
+                                <div className="min-w-0">
+                                  <div className="text-[10px] font-mono uppercase font-bold tracking-wider text-slate-800">
+                                    🎉 Reward Unlocked
+                                  </div>
+                                  <div className="text-xs font-bold truncate">
+                                    {hasCustomRewardTitle(selectedPass.rewardTitle) ? selectedPass.rewardTitle : 'Store Reward'}
+                                  </div>
+                                </div>
+                                <button
+                                  onClick={() =>
+                                    handleClaimVoucher({
+                                      id: `pass_rw_${selectedPass.slug}`,
+                                      passId: selectedPass.id,
+                                      rewardId: selectedPass.rewardId,
+                                      businessName: selectedPass.name,
+                                      businessSlug: selectedPass.slug,
+                                      brandColor: selectedPass.brandColor,
+                                      rewardTitle: hasCustomRewardTitle(selectedPass.rewardTitle) ? selectedPass.rewardTitle : 'Store Reward',
+                                      stamps: selectedPass.stamps,
+                                      totalNeeded: selectedPass.totalStamps,
+                                      expiry: activePassRemainingDays !== null
+                                        ? activePassRemainingDays > 1
+                                          ? `Expires in ${activePassRemainingDays} days`
+                                          : activePassRemainingDays === 1
+                                          ? 'Expires tomorrow'
+                                          : 'Expires today'
+                                        : activePassExpiryDays
+                                        ? `Expires in ${activePassExpiryDays} days`
+                                        : selectedPass.reward_rule?.expiry_days
+                                        ? `Expires in ${selectedPass.reward_rule.expiry_days} days`
+                                        : 'Expires in 30 days',
+                                    })
+                                  }
+                                  className="px-3.5 py-1.5 rounded-xl bg-slate-950 hover:bg-black text-white font-display font-bold text-xs shadow-xs shrink-0 cursor-pointer active:scale-95 transition-all"
+                                >
+                                  Claim Reward
+                                </button>
                               </div>
+                            );
+                          }
+
+                          return (
+                            <div className="space-y-2">
+                              <div className="bg-white/10 backdrop-blur-md rounded-2xl p-3 flex items-center justify-between gap-2 text-xs border border-white/15">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <Sparkles className="w-4 h-4 text-amber-300 shrink-0" />
+                                  <span className="truncate">
+                                    <b>{selectedPass.totalStamps - selectedPass.stamps} more stamps</b> {hasCustomRewardTitle(selectedPass.rewardTitle) ? `to ${selectedPass.rewardTitle}` : 'to unlock reward'}
+                                  </span>
+                                </div>
+                              </div>
+                              {Boolean(activePassExpiryDays && activePassExpiryDays > 0) && (
+                                <div className="text-[10px] text-white/80 font-mono flex items-center justify-between px-1">
+                                  <span className="flex items-center gap-1">
+                                    <Clock className="w-3 h-3 text-amber-300 shrink-0" />
+                                    <span>Stamps validity:</span>
+                                  </span>
+                                  <span className="font-bold text-amber-200">
+                                    {activePassRemainingDays !== null
+                                      ? activePassRemainingDays > 1
+                                        ? `${activePassRemainingDays} days to complete`
+                                        : activePassRemainingDays === 1
+                                        ? '1 day left • Expires tomorrow'
+                                        : 'Expires today'
+                                      : `${activePassExpiryDays} days to complete`}
+                                  </span>
+                                </div>
+                              )}
                             </div>
-                            <button
-                              onClick={() =>
-                                handleClaimVoucher({
-                                  id: `pass_rw_${selectedPass.slug}`,
-                                  businessName: selectedPass.name,
-                                  businessSlug: selectedPass.slug,
-                                  brandColor: selectedPass.brandColor,
-                                  rewardTitle: hasCustomRewardTitle(selectedPass.rewardTitle) ? selectedPass.rewardTitle : 'Store Reward',
-                                  stamps: selectedPass.stamps,
-                                  totalNeeded: selectedPass.totalStamps,
-                                  expiry: activePassRemainingDays !== null
-                                    ? activePassRemainingDays > 1
-                                      ? `Expires in ${activePassRemainingDays} days`
-                                      : activePassRemainingDays === 1
-                                      ? 'Expires tomorrow'
-                                      : 'Expires today'
-                                    : activePassExpiryDays
-                                    ? `Expires in ${activePassExpiryDays} days`
-                                    : selectedPass.reward_rule?.expiry_days
-                                    ? `Expires in ${selectedPass.reward_rule.expiry_days} days`
-                                    : 'Expires in 30 days',
-                                })
-                              }
-                              className="px-3.5 py-1.5 rounded-xl bg-slate-950 hover:bg-black text-white font-display font-bold text-xs shadow-xs shrink-0 cursor-pointer active:scale-95 transition-all"
-                            >
-                              Claim Reward
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="space-y-2">
-                            <div className="bg-white/10 backdrop-blur-md rounded-2xl p-3 flex items-center justify-between gap-2 text-xs border border-white/15">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <Sparkles className="w-4 h-4 text-amber-300 shrink-0" />
-                                <span className="truncate">
-                                  <b>{selectedPass.totalStamps - selectedPass.stamps} more stamps</b> {hasCustomRewardTitle(selectedPass.rewardTitle) ? `to ${selectedPass.rewardTitle}` : 'to unlock reward'}
-                                </span>
-                              </div>
-                            </div>
-                            {Boolean(activePassExpiryDays && activePassExpiryDays > 0) && (
-                              <div className="text-[10px] text-white/80 font-mono flex items-center justify-between px-1">
-                                <span className="flex items-center gap-1">
-                                  <Clock className="w-3 h-3 text-amber-300 shrink-0" />
-                                  <span>Stamps validity:</span>
-                                </span>
-                                <span className="font-bold text-amber-200">
-                                  {activePassRemainingDays !== null
-                                    ? activePassRemainingDays > 1
-                                      ? `${activePassRemainingDays} days to complete`
-                                      : activePassRemainingDays === 1
-                                      ? '1 day left • Expires tomorrow'
-                                      : 'Expires today'
-                                    : `${activePassExpiryDays} days to complete`}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        )}
+                          );
+                        })()}
                       </>
                     )}
 
@@ -3783,26 +3831,6 @@ function CustomerPortalContent() {
                   </div>
                 ) : (
                   <>
-                    {claimedRewards.some((c) => c.status === 'PENDING') && (
-                      <div className="flex items-center justify-between pb-1">
-                        <span className="text-[11px] text-slate-500 font-medium">Your vouchers</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setClaimedRewards((prev) => {
-                              const updated = prev.filter((c) => c.status === 'REDEEMED');
-                              try {
-                                localStorage.setItem('reva_claimed_rewards', JSON.stringify(updated));
-                              } catch {}
-                              return updated;
-                            });
-                          }}
-                          className="text-[11px] text-rose-500 hover:text-rose-700 font-bold underline cursor-pointer"
-                        >
-                          Clear unused / invalid codes
-                        </button>
-                      </div>
-                    )}
                     {claimedRewards.map((hist) => (
                       <div
                         key={hist.id}
@@ -3832,39 +3860,21 @@ function CustomerPortalContent() {
                               REDEEMED
                             </span>
                           ) : (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setRedeemingReward({
-                                    id: hist.id,
-                                    businessName: hist.businessName,
-                                    businessSlug: hist.businessSlug,
-                                    rewardTitle: hasCustomRewardTitle(hist.rewardTitle) ? hist.rewardTitle : 'Store Reward',
-                                    code: hist.voucherCode,
-                                  });
-                                }}
-                                className="text-[10px] font-mono font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 px-2.5 py-1 rounded-md cursor-pointer transition-all active:scale-95"
-                              >
-                                SHOW CODE
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setClaimedRewards((prev) => {
-                                    const updated = prev.filter((c) => c.voucherCode !== hist.voucherCode && c.id !== hist.id);
-                                    try {
-                                      localStorage.setItem('reva_claimed_rewards', JSON.stringify(updated));
-                                    } catch {}
-                                    return updated;
-                                  });
-                                }}
-                                className="text-xs text-slate-400 hover:text-rose-500 p-1 cursor-pointer transition-colors"
-                                title="Dismiss invalid code"
-                              >
-                                ✕
-                              </button>
-                            </>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setRedeemingReward({
+                                  id: hist.id,
+                                  businessName: hist.businessName,
+                                  businessSlug: hist.businessSlug,
+                                  rewardTitle: hasCustomRewardTitle(hist.rewardTitle) ? hist.rewardTitle : 'Store Reward',
+                                  code: hist.voucherCode,
+                                });
+                              }}
+                              className="text-[10px] font-mono font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 px-2.5 py-1 rounded-md cursor-pointer transition-all active:scale-95"
+                            >
+                              SHOW CODE
+                            </button>
                           )}
                         </div>
                       </div>
