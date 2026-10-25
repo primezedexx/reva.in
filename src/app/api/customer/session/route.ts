@@ -77,7 +77,7 @@ export async function GET(req: NextRequest) {
       const themeConfig = resolveCompleteThemeConfig(biz?.reward_rule?.theme_config || biz?.theme_config);
 
       // 1. Primary pass for this store (always return membership pass)
-      const primaryRewardTitle = biz?.reward_rule?.reward_title?.trim() || (biz?.active_offers?.[0]?.title) || 'Specialty Loyalty Reward';
+      const primaryRewardTitle = biz?.reward_rule?.reward_title?.trim() || (biz?.active_offers?.[0]?.title) || '';
       passes.push({
         id: `${biz?.slug || 'store'}_primary`,
         rewardId: 'primary',
@@ -134,7 +134,7 @@ export async function GET(req: NextRequest) {
               logo_url: biz?.logo_url || '',
               stamps: Number(offerPass.stamps) || 0,
               totalStamps: Number(offer.stamps_needed) || 6,
-              rewardTitle: offer.title || 'Specialty Treat',
+              rewardTitle: offer.title || 'Reward',
               description: offer.desc || `Unlocked after completing ${offer.stamps_needed} stamps`,
               lastVisit: offerPass.last_stamp_at ? 'Recently' : 'Just started',
               minOrder: offer.min_order || undefined,

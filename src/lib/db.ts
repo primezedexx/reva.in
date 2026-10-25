@@ -1644,11 +1644,8 @@ class RevaDatabase {
               .order('scanned_at', { ascending: false });
 
             const lastQrMap = new Map<string, string>();
-            const totalStampsMap = new Map<string, number>();
 
             (visits || []).forEach((v: any) => {
-              const stamps = Number(v.stamp_awarded) || 1;
-              totalStampsMap.set(v.membership_id, (totalStampsMap.get(v.membership_id) || 0) + stamps);
               const isQr = Boolean(v.staff_note && v.staff_note.toLowerCase().includes('qr'));
               if (isQr && !lastQrMap.has(v.membership_id)) {
                 lastQrMap.set(v.membership_id, v.scanned_at);
@@ -1656,11 +1653,9 @@ class RevaDatabase {
             });
 
             return data.map((m: any) => {
-              const loggedStamps = totalStampsMap.get(m.id) || 0;
-              const activeStamps = Math.max(Number(m.stamps) || 0, loggedStamps);
               return {
                 ...m,
-                stamps: activeStamps,
+                stamps: Number(m.stamps) || 0,
                 last_qr_stamp_at: lastQrMap.get(m.id) || m.last_qr_stamp_at || null,
               };
             });
@@ -1997,10 +1992,25 @@ class RevaDatabase {
     status: 'PENDING' | 'REDEEMED' = 'PENDING',
     rewardId?: string
   ): Promise<RewardClaimed> {
-    const mem = await this.getMembershipById(membershipId);
+    let mem = await this.getMembershipById(membershipId);
     const bus = await this.getBusinessById(businessId);
-    const actualMemId = mem?.id || membershipId;
     const actualBusId = bus?.id || businessId;
+
+    if (!mem && actualBusId) {
+      try {
+        const { data } = await supabaseAdmin
+          .from('memberships')
+          .select('*')
+          .eq('business_id', actualBusId)
+          .order('last_visit_at', { ascending: false })
+          .limit(1);
+        if (data && data[0]) {
+          mem = data[0];
+        }
+      } catch {}
+    }
+
+    const actualMemId = mem?.id || membershipId;
 
     // Check if this is an additional reward pass (stored in tier JSON)
     let tierData: any = {};
@@ -2205,6 +2215,25 @@ class RevaDatabase {
       }
     } catch (e) {
       console.error('confirmRewardRedemption error:', e);
+    }
+
+    // Ensure membership stamps are decremented in Supabase if still >= stampsNeeded
+    if (existing.membership_id) {
+      try {
+        const mem = await this.getMembershipById(existing.membership_id);
+        const bus = existing.business_id ? await this.getBusinessById(existing.business_id) : null;
+        const stampsNeeded = bus?.reward_rule?.stamps_needed || 6;
+        if (mem && Number(mem.stamps) >= stampsNeeded) {
+          const updatedStamps = Math.max(0, Number(mem.stamps) - stampsNeeded);
+          await supabaseAdmin
+            .from('memberships')
+            .update({ stamps: updatedStamps })
+            .eq('id', existing.membership_id);
+          mem.stamps = updatedStamps;
+        }
+      } catch (err) {
+        console.error('Error confirming stamp deduction on confirmRewardRedemption:', err);
+      }
     }
 
     // Update in-memory
@@ -2563,67 +2592,16 @@ class RevaDatabase {
     const conversionRate = totalNudgesSent > 0 ? Math.round((convertedCount / totalNudgesSent) * 100) : 0;
     const atRiskCount = updatedMembers.filter((m) => m.is_at_risk).length;
 
-    // 1.5 Auto-Reconciliation & Self-Healing:
-    // Guarantee 100% mathematical consistency between customer active stamps in memberships and visit audit logs.
+    // 1.5 Sync customer total_visits if needed without altering active cycle stamps
     for (const mem of updatedMembers) {
-      const activeStamps = Number(mem.stamps) || 0;
       const memVisits = visitsByMemId[mem.id] || [];
-      const loggedStamps = memVisits.reduce((sum, v) => sum + (Number(v.stamp_awarded) || 1), 0);
-
-      if (activeStamps > loggedStamps) {
-        const diff = activeStamps - loggedStamps;
-        const stampDateIso = mem.last_visit_at || new Date().toISOString();
-        const syncVisit: Visit = {
-          id: 'v_sync_' + Math.random().toString(36).substring(2, 9),
-          membership_id: mem.id,
-          business_id: businessId,
-          scanned_at: stampDateIso,
-          staff_note: `Counter Staff Verified Stamp (+${diff})`,
-          spend_amount: null,
-          stamp_awarded: diff,
-        };
-
-        allVisits.unshift(syncVisit);
-        if (!visitsByMemId[mem.id]) {
-          visitsByMemId[mem.id] = [];
-        }
-        visitsByMemId[mem.id].unshift(syncVisit);
-
-        // Asynchronously self-heal Supabase visits table to prevent future drift
-        (async () => {
-          try {
-            const { data } = await supabaseAdmin
-              .from('visits')
-              .insert({
-                membership_id: mem.id,
-                business_id: businessId,
-                scanned_at: stampDateIso,
-                staff_note: syncVisit.staff_note,
-                spend_amount: syncVisit.spend_amount,
-                stamp_awarded: diff,
-              })
-              .select()
-              .maybeSingle();
-
-            if (data && data.id) {
-              syncVisit.id = data.id;
-            }
-          } catch {
-            // ignore async background sync errors
-          }
-        })();
-      } else if (loggedStamps > activeStamps) {
-        // Self-heal membership stamps from visits table in Supabase
-        mem.stamps = loggedStamps;
-        mem.total_visits = Math.max(Number(mem.total_visits) || 0, memVisits.length);
+      if (memVisits.length > (Number(mem.total_visits) || 0)) {
+        mem.total_visits = memVisits.length;
         (async () => {
           try {
             await supabaseAdmin
               .from('memberships')
-              .update({
-                stamps: loggedStamps,
-                total_visits: memVisits.length,
-              })
+              .update({ total_visits: memVisits.length })
               .eq('id', mem.id);
           } catch {}
         })();

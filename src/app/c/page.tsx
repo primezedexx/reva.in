@@ -367,6 +367,20 @@ export function isStoreRewardActive(storeOrPass: any): boolean {
   return true;
 }
 
+export function hasCustomRewardTitle(title?: string): boolean {
+  if (!title) return false;
+  const t = title.trim().toLowerCase();
+  return (
+    t !== '' &&
+    t !== 'reward' &&
+    t !== 'store reward' &&
+    t !== 'specialty loyalty reward' &&
+    t !== 'specialty treat' &&
+    t !== 'free specialty beverage' &&
+    t !== 'free loyalty reward'
+  );
+}
+
 function CustomerPortalContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -1454,7 +1468,7 @@ function CustomerPortalContent() {
           businessName: pass.name,
           businessSlug: pass.slug,
           brandColor: pass.brandColor || '#3B82F6',
-          rewardTitle: pass.rewardTitle || pass.reward_rule?.reward_title || 'Free Loyalty Reward',
+          rewardTitle: hasCustomRewardTitle(pass.rewardTitle) ? pass.rewardTitle : (hasCustomRewardTitle(pass.reward_rule?.reward_title) ? pass.reward_rule.reward_title : 'Loyalty Reward'),
           stamps: current,
           totalNeeded: needed,
           expiry: pass.reward_rule?.expiry_days ? `Valid for ${pass.reward_rule.expiry_days} days` : 'Ready to claim at counter',
@@ -2479,7 +2493,10 @@ function CustomerPortalContent() {
 
       const newPass = {
         id: mem?.id || `${targetBiz.slug}_primary`,
+        membershipId: mem?.id,
+        membership_id: mem?.id,
         businessId: targetBiz.id || targetBiz.slug,
+        business_id: targetBiz.id,
         slug: targetBiz.slug,
         name: cleanBizName(targetBiz.name),
         category: targetBiz.category || joiningBusiness.category,
@@ -2487,7 +2504,11 @@ function CustomerPortalContent() {
         logo_url: targetBiz.logo_url || joiningBusiness.logo_url || (targetBiz.theme_config as any)?.logo_url || '',
         stamps: mem?.stamps || 0,
         totalStamps: stampsNeeded,
-        rewardTitle: targetBiz.reward_rule?.reward_title || targetBiz.active_offers?.[0]?.title || 'Specialty Loyalty Reward',
+        rewardTitle: hasCustomRewardTitle(targetBiz.reward_rule?.reward_title)
+          ? targetBiz.reward_rule.reward_title.trim()
+          : hasCustomRewardTitle(targetBiz.active_offers?.[0]?.title)
+          ? targetBiz.active_offers[0].title.trim()
+          : '',
         lastVisit: 'Just joined',
         minOrder: targetBiz.reward_rule?.min_order_for_stamp || targetBiz.min_order_for_stamp || undefined,
         expiry_days: targetBiz.reward_rule?.expiry_days !== undefined ? Number(targetBiz.reward_rule.expiry_days) : 60,
@@ -2758,24 +2779,9 @@ function CustomerPortalContent() {
                             {selectedPass.name}
                           </h2>
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <p className="text-xs text-white/80 font-medium truncate">
-                              {passCustomTagline ? (
-                                <span className="text-amber-200/90 text-[11px] font-medium">{passCustomTagline}</span>
-                              ) : (
-                                <>Member: <span className="font-bold text-white">{customerName || 'Guest'}</span></>
-                              )}
+                            <p className="text-xs text-white/90 font-medium truncate">
+                              Member: <span className="font-bold text-white">{customerName || 'Member'}</span>
                             </p>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleStoreLogout(selectedPass.slug);
-                              }}
-                              className="text-[10px] text-amber-200/80 hover:text-white underline cursor-pointer font-medium tracking-tight"
-                              title="Sign out from this cafe"
-                            >
-                              (Log Out / Switch)
-                            </button>
                           </div>
                         </div>
                       </div>
@@ -2863,7 +2869,9 @@ function CustomerPortalContent() {
                               <div className="text-[10px] font-mono uppercase font-bold tracking-wider text-slate-800">
                                 🎉 Reward Unlocked
                               </div>
-                              <div className="text-xs font-bold truncate">{selectedPass.rewardTitle}</div>
+                              <div className="text-xs font-bold truncate">
+                                {hasCustomRewardTitle(selectedPass.rewardTitle) ? selectedPass.rewardTitle : 'Store Reward'}
+                              </div>
                             </div>
                             <button
                               onClick={() =>
@@ -2872,7 +2880,7 @@ function CustomerPortalContent() {
                                   businessName: selectedPass.name,
                                   businessSlug: selectedPass.slug,
                                   brandColor: selectedPass.brandColor,
-                                  rewardTitle: selectedPass.rewardTitle,
+                                  rewardTitle: hasCustomRewardTitle(selectedPass.rewardTitle) ? selectedPass.rewardTitle : 'Store Reward',
                                   stamps: selectedPass.stamps,
                                   totalNeeded: selectedPass.totalStamps,
                                   expiry: activePassRemainingDays !== null
@@ -2899,7 +2907,7 @@ function CustomerPortalContent() {
                               <div className="flex items-center gap-2 min-w-0">
                                 <Sparkles className="w-4 h-4 text-amber-300 shrink-0" />
                                 <span className="truncate">
-                                  <b>{selectedPass.totalStamps - selectedPass.stamps} more stamps</b> to {selectedPass.rewardTitle}
+                                  <b>{selectedPass.totalStamps - selectedPass.stamps} more stamps</b> {hasCustomRewardTitle(selectedPass.rewardTitle) ? `to ${selectedPass.rewardTitle}` : 'to unlock reward'}
                                 </span>
                               </div>
                             </div>
@@ -3119,7 +3127,7 @@ function CustomerPortalContent() {
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5">
                                 <h3 className="font-display font-bold text-sm text-slate-900 dark:text-white leading-tight truncate">
-                                  {pass.rewardTitle || pass.name}
+                                  {hasCustomRewardTitle(pass.rewardTitle) ? pass.rewardTitle : pass.name}
                                 </h3>
                                 {isCurrentlySelected && (
                                   <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" title="Viewing in pass holder above" />
@@ -4735,7 +4743,7 @@ function CustomerPortalContent() {
                 <Clock className="w-3 h-3 text-amber-700" />
                 <span>Status: PENDING</span>
               </span>
-              <h3 className="font-display font-bold text-lg">{redeemingReward.rewardTitle}</h3>
+              <h3 className="font-display font-bold text-lg">{hasCustomRewardTitle(redeemingReward.rewardTitle) ? redeemingReward.rewardTitle : 'Loyalty Reward'}</h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">
                 Show this 6-digit reward code to the cashier at {redeemingReward.businessName} to redeem.
               </p>

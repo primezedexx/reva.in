@@ -79,23 +79,7 @@ export async function POST(req: NextRequest) {
 
     const isQrScan = source === 'qr_scan';
 
-    // Auto-reconcile membership stamps from visits table if stamps count is 0
-    if (Number(currentMem.stamps) === 0) {
-      try {
-        const { data: memVisits } = await supabaseAdmin
-          .from('visits')
-          .select('stamp_awarded')
-          .eq('membership_id', targetMemId);
-        const logged = (memVisits || []).reduce((sum, v) => sum + (Number(v.stamp_awarded) || 1), 0);
-        if (logged > 0) {
-          currentMem.stamps = logged;
-          await supabaseAdmin
-            .from('memberships')
-            .update({ stamps: logged, total_visits: (memVisits || []).length })
-            .eq('id', targetMemId);
-        }
-      } catch {}
-    }
+    // Stamping logic for active membership
 
     // 24-Hour Cooldown Verification for Self-Serve QR Scans
     // Cooldown only applies if customer has actually collected stamps/visits before
