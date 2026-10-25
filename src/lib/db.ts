@@ -861,6 +861,10 @@ class RevaDatabase {
     const currentOffers = updates.active_offers !== undefined ? updates.active_offers : (existing?.active_offers || []);
     if (updates.active_offers !== undefined) {
       effectiveUpdates.active_offers = updates.active_offers;
+      if (updates.active_offers.length === 0 && updates.reward_rule?.reward_title === undefined && effectiveUpdates.reward_rule) {
+        effectiveUpdates.reward_rule.reward_title = '';
+        effectiveUpdates.reward_rule.reward_desc = '';
+      }
     } else if (currentOffers.length > 0) {
       effectiveUpdates.active_offers = currentOffers.map((o) => {
         if (o.id === 'off_2' || (o.type === 'milestone' && (o.stamps_needed || 6) >= (existing?.reward_rule?.stamps_needed || 6))) {

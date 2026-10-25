@@ -381,12 +381,34 @@ export function hasCustomRewardTitle(title?: string): boolean {
 
 export function isStoreRewardActive(storeOrPass: any): boolean {
   if (!storeOrPass) return false;
-  if (hasCustomRewardTitle(storeOrPass.rewardTitle)) return true;
-  if (hasCustomRewardTitle(storeOrPass.title)) return true;
-  if (hasCustomRewardTitle(storeOrPass.reward_rule?.reward_title)) return true;
-  if (Array.isArray(storeOrPass.active_offers) && storeOrPass.active_offers.some((o: any) => o && hasCustomRewardTitle(o.title))) {
+
+  // 1. If active_offers is present as an array
+  if (Array.isArray(storeOrPass.active_offers)) {
+    const hasOffer = storeOrPass.active_offers.some((o: any) => o && hasCustomRewardTitle(o.title));
+    if (hasOffer) return true;
+    // If active_offers is an empty array [], it ONLY has active rewards if reward_rule has a non-default custom title
+    if (storeOrPass.active_offers.length === 0) {
+      const customRuleTitle = storeOrPass.reward_rule?.reward_title;
+      return Boolean(customRuleTitle && hasCustomRewardTitle(customRuleTitle) && customRuleTitle.trim().toLowerCase() !== 'free specialty beverage');
+    }
+  }
+
+  // 2. Check reward_rule
+  if (hasCustomRewardTitle(storeOrPass.reward_rule?.reward_title) && storeOrPass.reward_rule.reward_title.trim().toLowerCase() !== 'free specialty beverage') {
     return true;
   }
+
+  // 3. If active_offers is explicitly empty array, it has no active rewards
+  if (Array.isArray(storeOrPass.active_offers) && storeOrPass.active_offers.length === 0) {
+    return false;
+  }
+
+  // 4. Fallback for pass objects ONLY if active_offers is undefined
+  if (storeOrPass.active_offers === undefined) {
+    if (hasCustomRewardTitle(storeOrPass.rewardTitle) && storeOrPass.rewardTitle.trim().toLowerCase() !== 'free specialty beverage') return true;
+    if (hasCustomRewardTitle(storeOrPass.title) && storeOrPass.title.trim().toLowerCase() !== 'free specialty beverage') return true;
+  }
+
   return false;
 }
 
@@ -888,6 +910,15 @@ function CustomerPortalContent() {
     const remainingDays = Math.max(0, activePassExpiryDays - elapsedDays);
     return remainingDays;
   }, [activePassExpiryDays, selectedPass]);
+
+  // Dynamically verify if the selected pass has an active reward configured by the cafe
+  const isSelectedPassRewardActive = useMemo(() => {
+    if (!selectedPass) return false;
+    if (currentStore && (currentStore.slug === selectedPass.slug || currentStore.id === selectedPass.businessId)) {
+      return isStoreRewardActive(currentStore);
+    }
+    return isStoreRewardActive(selectedPass);
+  }, [selectedPass, currentStore]);
 
   // Unstarted rewards belonging EXCLUSIVELY to the current cafe/store
   const availableStoreRewardsToStart = useMemo(() => {
@@ -1733,28 +1764,57 @@ function CustomerPortalContent() {
                 // Dynamically sync customer's active pass with live store settings (expiry_days, rewardTitle)
                 setUserPasses((prevPasses) => {
                   let changed = false;
-                  const updated = prevPasses.map((p) => {
+                  const liveOffers = d.business.active_offers || [];
+                  const storeHasRewards = liveOffers.some((o: any) => o && hasCustomRewardTitle(o.title)) ||
+                    (hasCustomRewardTitle(d.business.reward_rule?.reward_title) && d.business.reward_rule.reward_title.trim().toLowerCase() !== 'free specialty beverage');
+
+                  // 1. Remove secondary passes whose offer was removed by the merchant
+                  const remainingPasses = prevPasses.filter((p) => {
                     if (p.slug === d.business.slug || p.businessId === d.business.id) {
-                      const liveExp = (d.business.active_offers && d.business.active_offers.length > 0 && d.business.active_offers[0]?.expiry_days !== undefined)
-                        ? Number(d.business.active_offers[0].expiry_days)
+                      if (p.rewardId && p.rewardId !== 'primary') {
+                        const offerExists = liveOffers.some((o: any) => o.id === p.rewardId);
+                        if (!offerExists) {
+                          changed = true;
+                          return false;
+                        }
+                      }
+                    }
+                    return true;
+                  });
+
+                  // 2. Sync remaining passes
+                  const updated = remainingPasses.map((p) => {
+                    if (p.slug === d.business.slug || p.businessId === d.business.id) {
+                      const liveExp = (liveOffers.length > 0 && liveOffers[0]?.expiry_days !== undefined)
+                        ? Number(liveOffers[0].expiry_days)
                         : (d.business.reward_rule?.expiry_days !== undefined ? Number(d.business.reward_rule.expiry_days) : 30);
-                      const liveRewardTitle = hasCustomRewardTitle(d.business.reward_rule?.reward_title)
-                        ? d.business.reward_rule.reward_title.trim()
-                        : (hasCustomRewardTitle(d.business.active_offers?.[0]?.title) ? d.business.active_offers[0].title.trim() : p.rewardTitle);
-                      if (p.expiry_days !== liveExp || p.expiryDays !== liveExp || (liveRewardTitle && p.rewardTitle !== liveRewardTitle)) {
+                      
+                      const liveRewardTitle = storeHasRewards
+                        ? (hasCustomRewardTitle(d.business.reward_rule?.reward_title)
+                            ? d.business.reward_rule.reward_title.trim()
+                            : (hasCustomRewardTitle(liveOffers[0]?.title) ? liveOffers[0].title.trim() : ''))
+                        : '';
+
+                      if (
+                        p.expiry_days !== liveExp ||
+                        p.expiryDays !== liveExp ||
+                        p.rewardTitle !== liveRewardTitle ||
+                        JSON.stringify(p.active_offers || []) !== JSON.stringify(liveOffers)
+                      ) {
                         changed = true;
                         return {
                           ...p,
                           expiry_days: liveExp,
                           expiryDays: liveExp,
-                          rewardTitle: liveRewardTitle || p.rewardTitle,
+                          rewardTitle: liveRewardTitle,
                           reward_rule: d.business.reward_rule,
-                          active_offers: d.business.active_offers || [],
+                          active_offers: liveOffers,
                         };
                       }
                     }
                     return p;
                   });
+
                   if (changed) {
                     try {
                       localStorage.setItem('reva_customer_passes', JSON.stringify(updated));
@@ -2308,7 +2368,7 @@ function CustomerPortalContent() {
     const current = targetPass?.stamps || 0;
 
     // 1. If store has not configured any reward, block claiming
-    if (!isStoreRewardActive(targetPass)) {
+    if (!isSelectedPassRewardActive) {
       alert(`${targetPass?.name || 'This cafe'} hasn't created any rewards yet. Please contact the cafe.`);
       return;
     }
@@ -2849,12 +2909,12 @@ function CustomerPortalContent() {
                       </div>
 
                       <span className="px-2.5 py-1 rounded-full bg-white/15 backdrop-blur-md text-[10px] font-mono font-bold tracking-wider uppercase border border-white/25 text-white shadow-2xs shrink-0">
-                        {isStoreRewardActive(selectedPass) && selectedPass.stamps >= selectedPass.totalStamps ? 'Reward Ready' : 'Active Member'}
+                        {isSelectedPassRewardActive && selectedPass.stamps >= selectedPass.totalStamps ? 'Reward Ready' : 'Active Member'}
                       </span>
                     </div>
 
                     {/* Stamp Card Punch Grid or No Active Rewards State */}
-                    {!isStoreRewardActive(selectedPass) ? (
+                    {!isSelectedPassRewardActive ? (
                       <div className="bg-black/30 backdrop-blur-md rounded-2xl p-5 border border-white/20 text-center space-y-2.5 my-3 shadow-sm">
                         <div className="w-10 h-10 rounded-xl bg-white/15 text-amber-300 flex items-center justify-center mx-auto border border-white/20">
                           <Gift className="w-5 h-5 text-amber-300" />
@@ -3818,7 +3878,7 @@ function CustomerPortalContent() {
             {/* SUB-TAB: TO CLAIM */}
             {rewardSubTab === 'to-claim' && (
               <div className="space-y-3">
-                {selectedPass && !isStoreRewardActive(selectedPass) && (
+                {selectedPass && !isSelectedPassRewardActive && (
                   <div
                     className={`rounded-2xl p-4 border flex items-start gap-3 shadow-2xs ${
                       isDarkMode ? 'bg-amber-950/20 border-amber-900/40 text-amber-200' : 'bg-amber-50/70 border-amber-200/80 text-amber-900'

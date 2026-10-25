@@ -1851,12 +1851,19 @@ function OwnerDashboardContent() {
       sound.playClick();
       const existingOffers = selectedBusiness.active_offers || [];
       const updatedOffers = existingOffers.filter((o) => o.id !== offerId);
+      const remainingGrandReward = updatedOffers.find((o) => o.type === 'milestone' || (o.stamps_needed || 6) >= 6) || updatedOffers[0];
+      const updatedRewardRule = {
+        ...selectedBusiness.reward_rule,
+        reward_title: remainingGrandReward ? (remainingGrandReward.title || '') : '',
+        reward_desc: remainingGrandReward ? (remainingGrandReward.desc || '') : '',
+      };
 
       const res = await fetch(`/api/businesses/${selectedBusiness.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           active_offers: updatedOffers,
+          reward_rule: updatedRewardRule,
         }),
       });
 
@@ -1865,7 +1872,7 @@ function OwnerDashboardContent() {
         if (data.business) {
           setSelectedBusiness(data.business);
         } else {
-          setSelectedBusiness(prev => prev ? { ...prev, active_offers: updatedOffers } : null);
+          setSelectedBusiness(prev => prev ? { ...prev, active_offers: updatedOffers, reward_rule: updatedRewardRule } : null);
         }
         await loadDashboardData(selectedBusiness.id);
       } else {
