@@ -3426,7 +3426,11 @@ function OwnerDashboardContent() {
                       </div>
 
                       <div className="text-center text-xs text-slate-300 font-medium">
-                        🎁 Reward at {selectedBusiness?.reward_rule.stamps_needed || 6} stamps: <b className="text-white">{selectedBusiness?.reward_rule.reward_title || 'Free Treat'}</b>
+                        {selectedBusiness?.reward_rule?.reward_title ? (
+                          <>🎁 Reward at {selectedBusiness?.reward_rule.stamps_needed || 6} stamps: <b className="text-white">{selectedBusiness.reward_rule.reward_title}</b></>
+                        ) : (
+                          <span className="text-amber-300">⚠️ No reward created yet. Setup in Settings or Loyalty Program.</span>
+                        )}
                       </div>
                     </div>
 

@@ -7,8 +7,21 @@ import { db } from '@/lib/db';
 import { supabaseAdmin } from '@/lib/supabase';
 import { resolveCompleteThemeConfig } from '@/lib/theme-presets';
 
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+function hasCustomRewardTitle(title?: string): boolean {
+  if (!title) return false;
+  const t = title.trim().toLowerCase();
+  return (
+    t !== '' &&
+    t !== 'reward' &&
+    t !== 'store reward' &&
+    t !== 'specialty loyalty reward' &&
+    t !== 'specialty treat' &&
+    t !== 'free specialty beverage' &&
+    t !== 'free loyalty reward' &&
+    t !== 'loyalty reward' &&
+    t !== 'free treat'
+  );
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -77,7 +90,8 @@ export async function GET(req: NextRequest) {
       const themeConfig = resolveCompleteThemeConfig(biz?.reward_rule?.theme_config || biz?.theme_config);
 
       // 1. Primary pass for this store (always return membership pass)
-      const primaryRewardTitle = biz?.reward_rule?.reward_title?.trim() || (biz?.active_offers?.[0]?.title) || '';
+      const rawRewardTitle = biz?.reward_rule?.reward_title?.trim() || (biz?.active_offers?.[0]?.title) || '';
+      const primaryRewardTitle = hasCustomRewardTitle(rawRewardTitle) ? rawRewardTitle : '';
       passes.push({
         id: `${biz?.slug || 'store'}_primary`,
         rewardId: 'primary',
@@ -134,7 +148,7 @@ export async function GET(req: NextRequest) {
               logo_url: biz?.logo_url || '',
               stamps: Number(offerPass.stamps) || 0,
               totalStamps: Number(offer.stamps_needed) || 6,
-              rewardTitle: offer.title || 'Reward',
+              rewardTitle: hasCustomRewardTitle(offer.title) ? offer.title : '',
               description: offer.desc || `Unlocked after completing ${offer.stamps_needed} stamps`,
               lastVisit: offerPass.last_stamp_at ? 'Recently' : 'Just started',
               minOrder: offer.min_order || undefined,

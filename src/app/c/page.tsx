@@ -363,11 +363,6 @@ function getPassKey(pass: any, index: number = 0): string {
   return `${pass.slug || 'pass'}_${index}`;
 }
 
-export function isStoreRewardActive(storeOrPass: any): boolean {
-  if (!storeOrPass) return false;
-  return true;
-}
-
 export function hasCustomRewardTitle(title?: string): boolean {
   if (!title) return false;
   const t = title.trim().toLowerCase();
@@ -378,8 +373,33 @@ export function hasCustomRewardTitle(title?: string): boolean {
     t !== 'specialty loyalty reward' &&
     t !== 'specialty treat' &&
     t !== 'free specialty beverage' &&
-    t !== 'free loyalty reward'
+    t !== 'free loyalty reward' &&
+    t !== 'loyalty reward' &&
+    t !== 'free treat'
   );
+}
+
+export function isStoreRewardActive(storeOrPass: any): boolean {
+  if (!storeOrPass) return false;
+  if (hasCustomRewardTitle(storeOrPass.rewardTitle)) return true;
+  if (hasCustomRewardTitle(storeOrPass.title)) return true;
+  if (hasCustomRewardTitle(storeOrPass.reward_rule?.reward_title)) return true;
+  if (Array.isArray(storeOrPass.active_offers) && storeOrPass.active_offers.some((o: any) => o && hasCustomRewardTitle(o.title))) {
+    return true;
+  }
+  return false;
+}
+
+export function getStoreRewardTitle(storeOrPass: any): string {
+  if (!storeOrPass) return '';
+  if (hasCustomRewardTitle(storeOrPass.rewardTitle)) return storeOrPass.rewardTitle.trim();
+  if (hasCustomRewardTitle(storeOrPass.title)) return storeOrPass.title.trim();
+  if (hasCustomRewardTitle(storeOrPass.reward_rule?.reward_title)) return storeOrPass.reward_rule.reward_title.trim();
+  if (Array.isArray(storeOrPass.active_offers)) {
+    const found = storeOrPass.active_offers.find((o: any) => o && hasCustomRewardTitle(o.title));
+    if (found) return found.title.trim();
+  }
+  return '';
 }
 
 function CustomerPortalContent() {
@@ -1441,8 +1461,8 @@ function CustomerPortalContent() {
         (c) => c.businessSlug === pass.slug && c.status === 'PENDING'
       );
 
-      // Full Card Loyalty Reward Unlocked ONLY when THIS specific pass completes all required stamps AND is not already claimed
-      if (current >= needed && current > 0 && !hasPendingClaim) {
+      // Full Card Loyalty Reward Unlocked ONLY when THIS specific pass has an active reward created by the merchant AND completes all required stamps AND is not already claimed
+      if (isStoreRewardActive(pass) && current >= needed && current > 0 && !hasPendingClaim) {
         derived.push({
           id: `reward_${pass.slug}_${pass.id || pass.rewardId || 'primary'}_${needed}`,
           passId: pass.id,
@@ -1450,7 +1470,7 @@ function CustomerPortalContent() {
           businessName: pass.name,
           businessSlug: pass.slug,
           brandColor: pass.brandColor || '#3B82F6',
-          rewardTitle: hasCustomRewardTitle(pass.rewardTitle) ? pass.rewardTitle : (hasCustomRewardTitle(pass.reward_rule?.reward_title) ? pass.reward_rule.reward_title : 'Loyalty Reward'),
+          rewardTitle: getStoreRewardTitle(pass),
           stamps: current,
           totalNeeded: needed,
           expiry: pass.reward_rule?.expiry_days ? `Valid for ${pass.reward_rule.expiry_days} days` : 'Ready to claim at counter',
@@ -2233,7 +2253,13 @@ function CustomerPortalContent() {
     const needed = reward.totalNeeded || targetPass?.totalStamps || 6;
     const current = targetPass?.stamps || 0;
 
-    // 1. Prevent duplicate voucher codes: If customer already has an active pending code, reopen it!
+    // 1. If store has not configured any reward, block claiming
+    if (!isStoreRewardActive(targetPass)) {
+      alert(`${targetPass?.name || 'This cafe'} hasn't created any rewards yet. Please contact the cafe.`);
+      return;
+    }
+
+    // 2. Prevent duplicate voucher codes: If customer already has an active pending code, reopen it!
     const existingPending = (claimedRewards || []).find(
       (c) => c.businessSlug === reward.businessSlug && c.status === 'PENDING'
     );
@@ -2765,22 +2791,22 @@ function CustomerPortalContent() {
                       </div>
 
                       <span className="px-2.5 py-1 rounded-full bg-white/15 backdrop-blur-md text-[10px] font-mono font-bold tracking-wider uppercase border border-white/25 text-white shadow-2xs shrink-0">
-                        {selectedPass.stamps >= selectedPass.totalStamps ? 'Reward Ready' : 'Active Member'}
+                        {isStoreRewardActive(selectedPass) && selectedPass.stamps >= selectedPass.totalStamps ? 'Reward Ready' : 'Active Member'}
                       </span>
                     </div>
 
                     {/* Stamp Card Punch Grid or No Active Rewards State */}
                     {!isStoreRewardActive(selectedPass) ? (
-                      <div className="bg-black/30 backdrop-blur-md rounded-2xl p-5 border border-white/20 text-center space-y-2.5 my-3">
+                      <div className="bg-black/30 backdrop-blur-md rounded-2xl p-5 border border-white/20 text-center space-y-2.5 my-3 shadow-sm">
                         <div className="w-10 h-10 rounded-xl bg-white/15 text-amber-300 flex items-center justify-center mx-auto border border-white/20">
                           <Gift className="w-5 h-5 text-amber-300" />
                         </div>
                         <div className="space-y-1">
                           <h4 className="font-display font-bold text-sm text-white">
-                            There are no active rewards for this cafe right now.
+                            This cafe hasn't created any rewards yet
                           </h4>
-                          <p className="text-[11px] text-white/75 leading-relaxed max-w-xs mx-auto">
-                            This cafe has not launched any active reward campaigns yet. Check back soon or ask at the counter!
+                          <p className="text-[11px] text-white/80 leading-relaxed max-w-xs mx-auto font-sans">
+                            Please contact the cafe or check back soon for upcoming loyalty rewards &amp; perks!
                           </p>
                         </div>
                       </div>
@@ -3734,6 +3760,24 @@ function CustomerPortalContent() {
             {/* SUB-TAB: TO CLAIM */}
             {rewardSubTab === 'to-claim' && (
               <div className="space-y-3">
+                {selectedPass && !isStoreRewardActive(selectedPass) && (
+                  <div
+                    className={`rounded-2xl p-4 border flex items-start gap-3 shadow-2xs ${
+                      isDarkMode ? 'bg-amber-950/20 border-amber-900/40 text-amber-200' : 'bg-amber-50/70 border-amber-200/80 text-amber-900'
+                    }`}
+                  >
+                    <Info className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                    <div className="space-y-0.5 text-left">
+                      <div className="font-bold text-xs">
+                        {selectedPass.name} hasn't created any rewards yet
+                      </div>
+                      <p className="text-[11px] opacity-80 leading-relaxed font-sans">
+                        This cafe or restaurant has not created any loyalty rewards yet. Please contact the cafe staff or check back soon for ongoing perks!
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 {unlockedRewards.length === 0 ? (
                   <div
                     className={`rounded-3xl p-8 text-center space-y-3 border ${
