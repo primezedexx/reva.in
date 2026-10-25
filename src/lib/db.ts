@@ -824,7 +824,9 @@ class RevaDatabase {
       expiry_days:
         updates.reward_rule?.expiry_days !== undefined
           ? updates.reward_rule.expiry_days
-          : (baseRule.expiry_days ?? 60),
+          : (updates.active_offers?.[0]?.expiry_days !== undefined
+              ? updates.active_offers[0].expiry_days
+              : (baseRule.expiry_days ?? 30)),
       theme_config: themeConfig,
       category: updates.category !== undefined ? updates.category : (updates.reward_rule?.category !== undefined ? updates.reward_rule.category : existing?.category),
       city: updates.city !== undefined ? updates.city : (updates.reward_rule?.city !== undefined ? updates.reward_rule.city : existing?.city),
@@ -980,7 +982,7 @@ class RevaDatabase {
         address: businessData.address,
         google_review_url: businessData.google_review_url,
         plan: businessData.plan || 'growth',
-        expiry_days: businessData.reward_rule?.expiry_days ?? 60,
+        expiry_days: businessData.reward_rule?.expiry_days ?? businessData.active_offers?.[0]?.expiry_days ?? 30,
         trial_ends_at: businessData.trial_ends_at || new Date(Date.now() + 30 * 86400000).toISOString(),
         subscription_status: businessData.subscription_status || 'trialing',
         trial_active: businessData.trial_active ?? true,

@@ -110,7 +110,7 @@ export default function BusinessSetupModal({
     business.winback_offer_text || 'Complimentary Belgian Waffle or treat with your next visit'
   );
   const [expiryDays, setExpiryDays] = useState<number>(
-    business.reward_rule?.expiry_days !== undefined ? business.reward_rule.expiry_days : 60
+    business.reward_rule?.expiry_days !== undefined ? business.reward_rule.expiry_days : (business.active_offers?.[0]?.expiry_days ?? 30)
   );
 
   // Step 3: Visual Theme & Pass Branding
@@ -159,7 +159,7 @@ export default function BusinessSetupModal({
       setWinbackOffer(
         business.winback_offer_text || 'Complimentary Belgian Waffle or treat with your next visit'
       );
-      setExpiryDays(business.reward_rule?.expiry_days !== undefined ? business.reward_rule.expiry_days : 60);
+      setExpiryDays(business.reward_rule?.expiry_days !== undefined ? business.reward_rule.expiry_days : (business.active_offers?.[0]?.expiry_days ?? 30));
 
       if (theme) {
         setSelectedPreset(theme.preset || 'warm_latte');
@@ -250,17 +250,37 @@ export default function BusinessSetupModal({
 
       const cleanPhone = phone.trim();
       const cleanLogo = logoUrl.trim() || undefined;
+      const cleanExpiry = Number(expiryDays) >= 0 ? Number(expiryDays) : 30;
       const updatedRewardRule = {
         stamps_needed: Number(stampsNeeded) || 6,
         reward_title: rewardTitle.trim(),
         reward_desc: rewardDesc.trim(),
         min_order_for_stamp: Number(minOrder) || 150,
-        expiry_days: Number(expiryDays) >= 0 ? Number(expiryDays) : 60,
+        expiry_days: cleanExpiry,
         theme_config: { ...compiledTheme, logo_url: cleanLogo },
         phone: cleanPhone || undefined,
         phone_verified: Boolean(cleanPhone),
         logo_url: cleanLogo,
       };
+
+      const existingOffers = (business.active_offers && business.active_offers.length > 0)
+        ? business.active_offers.map((o) => ({
+            ...o,
+            expiry_days: cleanExpiry,
+            title: o.title || rewardTitle.trim(),
+            stamps_needed: o.stamps_needed || Number(stampsNeeded) || 6,
+          }))
+        : (rewardTitle.trim() ? [{
+            id: 'off_' + Math.random().toString(36).substring(2, 9),
+            title: rewardTitle.trim(),
+            stamps_needed: Number(stampsNeeded) || 6,
+            badge: `${Number(stampsNeeded) || 6} Stamps Reward`,
+            desc: rewardDesc.trim() || `Unlocked after completing ${Number(stampsNeeded) || 6} stamps`,
+            type: 'milestone',
+            icon: 'gift',
+            expiry_days: cleanExpiry,
+            min_order: Number(minOrder) || 150,
+          }] : []);
 
       const payload = {
         name: cleanName,
@@ -278,7 +298,7 @@ export default function BusinessSetupModal({
         min_order_for_stamp: Number(minOrder) || 150,
         avg_spend_per_visit: Number(avgSpend) || 250,
         winback_offer_text: winbackOffer.trim(),
-        active_offers: [],
+        active_offers: existingOffers,
       };
 
       const res = await fetch(`/api/businesses/${business.id}`, {

@@ -426,7 +426,7 @@ function OwnerDashboardContent() {
   const [settingsOfferText, setSettingsOfferText] = useState('');
   const [settingsAvgSpend, setSettingsAvgSpend] = useState(250);
   const [settingsMinOrder, setSettingsMinOrder] = useState(150);
-  const [settingsRewardExpiryDays, setSettingsRewardExpiryDays] = useState(60);
+  const [settingsRewardExpiryDays, setSettingsRewardExpiryDays] = useState(30);
   const [settingsGoogleReviewUrl, setSettingsGoogleReviewUrl] = useState('');
   const [settingsInstagramUrl, setSettingsInstagramUrl] = useState('');
   const [settingsAddress, setSettingsAddress] = useState('');
@@ -596,7 +596,7 @@ function OwnerDashboardContent() {
           setSettingsOfferText(active.winback_offer_text || '');
           setSettingsAvgSpend(active.avg_spend_per_visit || 250);
           setSettingsMinOrder(active.reward_rule?.min_order_for_stamp || active.min_order_for_stamp || 150);
-          setSettingsRewardExpiryDays(active.reward_rule?.expiry_days !== undefined ? active.reward_rule.expiry_days : 60);
+          setSettingsRewardExpiryDays(active.reward_rule?.expiry_days !== undefined ? active.reward_rule.expiry_days : (active.active_offers?.[0]?.expiry_days ?? 30));
 
           const milestone = (active.active_offers as any[])?.find((o: any) => (o.stamps_needed || 0) < (active.reward_rule?.stamps_needed || 6));
           if (milestone) {
@@ -1618,7 +1618,7 @@ function OwnerDashboardContent() {
             stamps_needed: stamps,
             reward_title: rewardTitle,
             min_order_for_stamp: minOrder,
-            expiry_days: Number(settingsRewardExpiryDays) >= 0 ? Number(settingsRewardExpiryDays) : 60,
+            expiry_days: Number(settingsRewardExpiryDays) >= 0 ? Number(settingsRewardExpiryDays) : 30,
           },
           active_offers: updatedOffers,
           min_order_for_stamp: minOrder,
@@ -1730,11 +1730,19 @@ function OwnerDashboardContent() {
       const existingOffers = selectedBusiness.active_offers || [];
       const updatedOffers = [...existingOffers, newOffer].sort((a, b) => (a.stamps_needed || 0) - (b.stamps_needed || 0));
 
+      const updatedRewardRule = {
+        ...selectedBusiness.reward_rule,
+        expiry_days: expiry ?? selectedBusiness.reward_rule?.expiry_days ?? 30,
+        reward_title: selectedBusiness.reward_rule?.reward_title || newOffer.title,
+        stamps_needed: selectedBusiness.reward_rule?.stamps_needed || stamps,
+      };
+
       const res = await fetch(`/api/businesses/${selectedBusiness.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           active_offers: updatedOffers,
+          reward_rule: updatedRewardRule,
         }),
       });
 
@@ -1798,11 +1806,18 @@ function OwnerDashboardContent() {
         return o;
       }).sort((a, b) => (a.stamps_needed || 0) - (b.stamps_needed || 0));
 
+      const updatedRewardRule = {
+        ...selectedBusiness.reward_rule,
+        expiry_days: expiry ?? selectedBusiness.reward_rule?.expiry_days ?? 30,
+        reward_title: editOfferTitle.trim() || selectedBusiness.reward_rule?.reward_title,
+      };
+
       const res = await fetch(`/api/businesses/${selectedBusiness.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           active_offers: updatedOffers,
+          reward_rule: updatedRewardRule,
         }),
       });
 

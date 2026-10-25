@@ -695,7 +695,9 @@ function CustomerPortalContent() {
       joined_at: new Date().toISOString(),
       rewardId: 'primary',
       businessId: currentStore.id || currentStore.slug,
-      expiry_days: currentStore.reward_rule?.expiry_days,
+      expiry_days: (currentStore.active_offers && currentStore.active_offers.length > 0 && currentStore.active_offers[0]?.expiry_days !== undefined)
+        ? Number(currentStore.active_offers[0].expiry_days)
+        : (currentStore.reward_rule?.expiry_days !== undefined ? Number(currentStore.reward_rule.expiry_days) : 30),
       last_qr_stamp_at: undefined,
     };
   }, [isPreviewMode, currentStore]);
@@ -824,28 +826,46 @@ function CustomerPortalContent() {
   // Dynamically resolve the active pass's specific stamp validity / expiry days
   const activePassExpiryDays = useMemo(() => {
     if (!selectedPass) return null;
-    // 1. If it's an additional reward pass, look up in currentStore/selectedPass active_offers first
+    const offers = (selectedPass.active_offers || currentStore?.active_offers || []);
+
+    // 1. Match against active offers by rewardId or title, or single offer
+    let matchedOffer: any = null;
     if (selectedPass.rewardId && selectedPass.rewardId !== 'primary') {
-      const offers = (selectedPass.active_offers || currentStore?.active_offers || []);
-      const matchedOffer = offers.find(
-        (o: any) => o.id === selectedPass.rewardId || o.title?.toLowerCase().trim() === selectedPass.rewardTitle?.toLowerCase().trim()
+      matchedOffer = offers.find(
+        (o: any) => o.id === selectedPass.rewardId || (selectedPass.rewardTitle && o.title?.toLowerCase().trim() === selectedPass.rewardTitle?.toLowerCase().trim())
       );
-      if (matchedOffer && matchedOffer.expiry_days !== undefined && matchedOffer.expiry_days !== null) {
-        return Number(matchedOffer.expiry_days);
-      }
     }
-    // 2. If the pass has its own explicit expiry_days
-    if (selectedPass.expiry_days !== undefined && selectedPass.expiry_days !== null) {
+    if (!matchedOffer && selectedPass.rewardTitle) {
+      matchedOffer = offers.find(
+        (o: any) => o.title?.toLowerCase().trim() === selectedPass.rewardTitle?.toLowerCase().trim()
+      );
+    }
+    if (!matchedOffer && offers.length > 0) {
+      matchedOffer = offers.find((o: any) => o.stamps_needed === selectedPass.totalStamps) || offers[0];
+    }
+    if (matchedOffer && matchedOffer.expiry_days !== undefined && matchedOffer.expiry_days !== null && Number(matchedOffer.expiry_days) > 0) {
+      return Number(matchedOffer.expiry_days);
+    }
+
+    // 2. Live business settings truth from database (currentStore reward_rule)
+    if (currentStore?.reward_rule?.expiry_days !== undefined && currentStore?.reward_rule?.expiry_days !== null && Number(currentStore.reward_rule.expiry_days) > 0) {
+      return Number(currentStore.reward_rule.expiry_days);
+    }
+
+    // 3. Pass explicit expiry_days
+    if (selectedPass.expiry_days !== undefined && selectedPass.expiry_days !== null && Number(selectedPass.expiry_days) > 0) {
       return Number(selectedPass.expiry_days);
     }
-    if ((selectedPass as any).expiryDays !== undefined && (selectedPass as any).expiryDays !== null) {
+    if ((selectedPass as any).expiryDays !== undefined && (selectedPass as any).expiryDays !== null && Number((selectedPass as any).expiryDays) > 0) {
       return Number((selectedPass as any).expiryDays);
     }
-    // 3. Fallback to primary reward_rule expiry_days
-    if (selectedPass.reward_rule?.expiry_days !== undefined && selectedPass.reward_rule?.expiry_days !== null) {
+
+    // 4. Pass reward_rule expiry_days
+    if (selectedPass.reward_rule?.expiry_days !== undefined && selectedPass.reward_rule?.expiry_days !== null && Number(selectedPass.reward_rule.expiry_days) > 0) {
       return Number(selectedPass.reward_rule.expiry_days);
     }
-    return null;
+
+    return 30;
   }, [selectedPass, currentStore]);
 
   // Dynamically calculate remaining days for this pass (counts down day by day: 60 -> 59 -> 58...)
@@ -1710,6 +1730,40 @@ function CustomerPortalContent() {
                   return updated;
                 });
 
+                // Dynamically sync customer's active pass with live store settings (expiry_days, rewardTitle)
+                setUserPasses((prevPasses) => {
+                  let changed = false;
+                  const updated = prevPasses.map((p) => {
+                    if (p.slug === d.business.slug || p.businessId === d.business.id) {
+                      const liveExp = (d.business.active_offers && d.business.active_offers.length > 0 && d.business.active_offers[0]?.expiry_days !== undefined)
+                        ? Number(d.business.active_offers[0].expiry_days)
+                        : (d.business.reward_rule?.expiry_days !== undefined ? Number(d.business.reward_rule.expiry_days) : 30);
+                      const liveRewardTitle = hasCustomRewardTitle(d.business.reward_rule?.reward_title)
+                        ? d.business.reward_rule.reward_title.trim()
+                        : (hasCustomRewardTitle(d.business.active_offers?.[0]?.title) ? d.business.active_offers[0].title.trim() : p.rewardTitle);
+                      if (p.expiry_days !== liveExp || p.expiryDays !== liveExp || (liveRewardTitle && p.rewardTitle !== liveRewardTitle)) {
+                        changed = true;
+                        return {
+                          ...p,
+                          expiry_days: liveExp,
+                          expiryDays: liveExp,
+                          rewardTitle: liveRewardTitle || p.rewardTitle,
+                          reward_rule: d.business.reward_rule,
+                          active_offers: d.business.active_offers || [],
+                        };
+                      }
+                    }
+                    return p;
+                  });
+                  if (changed) {
+                    try {
+                      localStorage.setItem('reva_customer_passes', JSON.stringify(updated));
+                    } catch {}
+                    return updated;
+                  }
+                  return prevPasses;
+                });
+
                 // Auto-open Join/Login popup if customer does not have an active pass for this store
                 const hasPass = (userPasses || []).some(
                   (p: any) => p.slug === d.business.slug || p.businessId === d.business.id || p.slug === storeParam || p.businessId === storeParam
@@ -2515,8 +2569,12 @@ function CustomerPortalContent() {
           : '',
         lastVisit: 'Just joined',
         minOrder: targetBiz.reward_rule?.min_order_for_stamp || targetBiz.min_order_for_stamp || undefined,
-        expiry_days: targetBiz.reward_rule?.expiry_days !== undefined ? Number(targetBiz.reward_rule.expiry_days) : 60,
-        expiryDays: targetBiz.reward_rule?.expiry_days !== undefined ? Number(targetBiz.reward_rule.expiry_days) : 60,
+        expiry_days: (targetBiz.active_offers && targetBiz.active_offers.length > 0 && targetBiz.active_offers[0]?.expiry_days !== undefined)
+          ? Number(targetBiz.active_offers[0].expiry_days)
+          : (targetBiz.reward_rule?.expiry_days !== undefined ? Number(targetBiz.reward_rule.expiry_days) : 30),
+        expiryDays: (targetBiz.active_offers && targetBiz.active_offers.length > 0 && targetBiz.active_offers[0]?.expiry_days !== undefined)
+          ? Number(targetBiz.active_offers[0].expiry_days)
+          : (targetBiz.reward_rule?.expiry_days !== undefined ? Number(targetBiz.reward_rule.expiry_days) : 30),
         passId: mem?.id
           ? `REV-${mem.id.slice(0, 8).toUpperCase()}`
           : `REV-${targetBiz.slug.slice(0, 3).toUpperCase()}-${Math.floor(10000 + Math.random() * 90000)}`,

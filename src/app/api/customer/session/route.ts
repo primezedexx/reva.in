@@ -92,6 +92,18 @@ export async function GET(req: NextRequest) {
       // 1. Primary pass for this store (always return membership pass)
       const rawRewardTitle = biz?.reward_rule?.reward_title?.trim() || (biz?.active_offers?.[0]?.title) || '';
       const primaryRewardTitle = hasCustomRewardTitle(rawRewardTitle) ? rawRewardTitle : '';
+
+      // Resolve expiry_days dynamically: check matched offer from active_offers first
+      const matchedOffer = (biz?.active_offers || []).find((o: any) =>
+        (primaryRewardTitle && o.title?.toLowerCase().trim() === primaryRewardTitle.toLowerCase().trim()) ||
+        (o.stamps_needed === stampsNeeded)
+      );
+      const effectiveExpiryDays = (matchedOffer && matchedOffer.expiry_days !== undefined && matchedOffer.expiry_days !== null)
+        ? Number(matchedOffer.expiry_days)
+        : (biz?.reward_rule?.expiry_days !== undefined && biz?.reward_rule?.expiry_days !== null
+            ? Number(biz.reward_rule.expiry_days)
+            : 30);
+
       passes.push({
         id: `${biz?.slug || 'store'}_primary`,
         rewardId: 'primary',
@@ -106,7 +118,8 @@ export async function GET(req: NextRequest) {
         rewardTitle: primaryRewardTitle,
         lastVisit: m.last_visit_at ? 'Recently' : 'Just joined',
         minOrder: biz?.reward_rule?.min_order_for_stamp || biz?.min_order_for_stamp || undefined,
-        expiry_days: biz?.reward_rule?.expiry_days !== undefined ? Number(biz.reward_rule.expiry_days) : 60,
+        expiry_days: effectiveExpiryDays,
+        expiryDays: effectiveExpiryDays,
         passId: `REV-${m.id.slice(0, 8).toUpperCase()}`,
         membershipId: m.id,
         membership_id: m.id,
