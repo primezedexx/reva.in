@@ -89,8 +89,8 @@ export async function POST(req: NextRequest) {
       brand_color: '#0F172A',
       reward_rule: {
         stamps_needed: 6,
-        reward_title: 'Free Specialty Beverage',
-        reward_desc: 'Any handcrafted beverage or signature treat on the house',
+        reward_title: '',
+        reward_desc: '',
         min_order_for_stamp: 150,
       },
       avg_spend_per_visit: 250.0,

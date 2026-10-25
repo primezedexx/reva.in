@@ -91,11 +91,14 @@ export default function BusinessSetupModal({
   const [stampsNeeded, setStampsNeeded] = useState<number>(
     business.reward_rule?.stamps_needed || 6
   );
+  const rawInitReward = business.reward_rule?.reward_title;
   const [rewardTitle, setRewardTitle] = useState(
-    business.reward_rule?.reward_title || 'Free Specialty Beverage'
+    rawInitReward && rawInitReward !== 'Free Specialty Beverage' ? rawInitReward : ''
   );
   const [rewardDesc, setRewardDesc] = useState(
-    business.reward_rule?.reward_desc || 'Any handcrafted drink or signature treat on the house'
+    business.reward_rule?.reward_desc && business.reward_rule.reward_desc !== 'Any handcrafted drink or signature treat on the house'
+      ? business.reward_rule.reward_desc
+      : ''
   );
   const [minOrder, setMinOrder] = useState<string>(
     String(business.reward_rule?.min_order_for_stamp || business.min_order_for_stamp || 150)
@@ -144,10 +147,12 @@ export default function BusinessSetupModal({
       setPhone(business.phone || '');
 
       const theme = business.theme_config || business.reward_rule?.theme_config;
-      setStampsNeeded(business.reward_rule?.stamps_needed || 6);
-      setRewardTitle(business.reward_rule?.reward_title || 'Free Specialty Beverage');
+      const syncReward = business.reward_rule?.reward_title;
+      setRewardTitle(syncReward && syncReward !== 'Free Specialty Beverage' ? syncReward : '');
       setRewardDesc(
-        business.reward_rule?.reward_desc || 'Any handcrafted drink on the house'
+        business.reward_rule?.reward_desc && business.reward_rule.reward_desc !== 'Any handcrafted drink on the house'
+          ? business.reward_rule.reward_desc
+          : ''
       );
       setMinOrder(String(business.reward_rule?.min_order_for_stamp || business.min_order_for_stamp || 150));
       setAvgSpend(String(business.avg_spend_per_visit || 250));
@@ -247,8 +252,8 @@ export default function BusinessSetupModal({
       const cleanLogo = logoUrl.trim() || undefined;
       const updatedRewardRule = {
         stamps_needed: Number(stampsNeeded) || 6,
-        reward_title: rewardTitle.trim() || 'Free Specialty Beverage',
-        reward_desc: rewardDesc.trim() || 'Any handcrafted drink on the house',
+        reward_title: rewardTitle.trim(),
+        reward_desc: rewardDesc.trim(),
         min_order_for_stamp: Number(minOrder) || 150,
         expiry_days: Number(expiryDays) >= 0 ? Number(expiryDays) : 60,
         theme_config: { ...compiledTheme, logo_url: cleanLogo },
@@ -1050,7 +1055,7 @@ export default function BusinessSetupModal({
                   </div>
                   <div className="text-left flex-1 min-w-0">
                     <div className="text-[11px] font-bold truncate">
-                      {rewardTitle || 'Free Specialty Beverage'}
+                      {rewardTitle || 'Specialty Treat'}
                     </div>
                     <div className="text-[10px] text-white/80 truncate">
                       Earned at {stampsNeeded} stamps • Min. bill ₹{minOrder}

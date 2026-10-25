@@ -37,8 +37,8 @@ const SEED_BUSINESSES: Business[] = [
     is_setup_completed: true,
     reward_rule: {
       stamps_needed: 6,
-      reward_title: 'Free Specialty Beverage',
-      reward_desc: 'Any handcrafted boba tea, matcha latte, or single-origin pour over on the house',
+      reward_title: '',
+      reward_desc: '',
       min_order_for_stamp: 150,
       is_setup_completed: true,
     },
@@ -46,28 +46,8 @@ const SEED_BUSINESSES: Business[] = [
     min_order_for_stamp: 150,
     winback_delay_multiplier: 1.5,
     winback_min_days: 5,
-    winback_offer_text: 'Complimentary Belgian Waffle with any drink',
+    winback_offer_text: 'Complimentary treat with any order',
     active_offers: [
-      {
-        id: 'off_1',
-        title: 'Free Belgian Waffle',
-        stamps_needed: 3,
-        badge: '3 Stamps Reward',
-        desc: 'Earned at 3 stamps on your digital card',
-        type: 'milestone',
-        icon: 'flame',
-        min_order: 150,
-      },
-      {
-        id: 'off_2',
-        title: 'Free Specialty Beverage',
-        stamps_needed: 6,
-        badge: '6 Stamps Grand Reward',
-        desc: 'Any handcrafted boba, matcha, or pour over',
-        type: 'milestone',
-        icon: 'star',
-        min_order: 150,
-      },
       {
         id: 'off_3',
         title: 'Artisan Pastry & Coffee Box',
@@ -720,19 +700,6 @@ class RevaDatabase {
     });
     if (inMem) return this.ensureBusinessOffers(inMem);
 
-    // 9. Resilient Fallback: If merchant DB has at least one business, return the most recent active business
-    try {
-      const { data: firstBiz } = await supabaseAdmin.from('businesses').select('*').order('created_at', { ascending: false }).limit(1).maybeSingle();
-      if (firstBiz) {
-        return this.ensureBusinessOffers(firstBiz);
-      }
-    } catch {}
-
-    // 10. Ultimate fallback to default demo store
-    if (this.businesses.length > 0) {
-      return this.ensureBusinessOffers(this.businesses[0]);
-    }
-
     return null;
   }
 
@@ -742,7 +709,8 @@ class RevaDatabase {
     if (b.reward_rule && b.reward_rule.stamps_needed !== stampsNeeded) {
       b.reward_rule.stamps_needed = stampsNeeded;
     }
-    const rewardTitle = b.reward_rule?.reward_title || 'Free Specialty Beverage';
+    const rawRewardTitle = b.reward_rule?.reward_title;
+    const rewardTitle = (rawRewardTitle && rawRewardTitle !== 'Free Specialty Beverage') ? rawRewardTitle : '';
     const minOrder = b.reward_rule?.min_order_for_stamp || b.min_order_for_stamp || 150;
 
     // Unpack extra metadata safely stored in reward_rule JSONB
@@ -797,10 +765,15 @@ class RevaDatabase {
     }
 
     // Active offers: strictly only display rewards created by the merchant!
-    // Never auto-inject template rewards like "Welcome Treat" or "Welcome Milestone Reward".
+    // Never auto-inject template rewards like "Welcome Treat", "Welcome Milestone Reward", or "Free Specialty Beverage".
+    if (b.reward_rule?.reward_title === 'Free Specialty Beverage') {
+      b.reward_rule.reward_title = '';
+      b.reward_rule.reward_desc = '';
+    }
     if (Array.isArray(b.active_offers)) {
       b.active_offers = b.active_offers.filter(
-        (o) => o && o.id !== 'off_1' && o.title !== 'Welcome Treat' && o.title !== 'Welcome Milestone Reward'
+        (o) => o && o.id !== 'off_1' && o.title !== 'Welcome Treat' && o.title !== 'Welcome Milestone Reward' &&
+               !(o.id === 'off_2' && o.title === 'Free Specialty Beverage')
       );
     } else {
       b.active_offers = [];
@@ -833,13 +806,14 @@ class RevaDatabase {
 
     const baseRule = updates.reward_rule || existing?.reward_rule || {
       stamps_needed: 6,
-      reward_title: 'Free Specialty Beverage',
-      reward_desc: 'Any handcrafted drink on the house',
+      reward_title: '',
+      reward_desc: '',
       min_order_for_stamp: 150,
     };
 
     const stampsNeeded = Math.min(8, Math.max(1, baseRule.stamps_needed || 6));
-    const rewardTitle = baseRule.reward_title || 'Free Specialty Beverage';
+    const rawRuleTitle = baseRule.reward_title;
+    const rewardTitle = (rawRuleTitle && rawRuleTitle !== 'Free Specialty Beverage') ? rawRuleTitle : '';
     const minOrder = baseRule.min_order_for_stamp || updates.min_order_for_stamp || 150;
 
     effectiveUpdates.reward_rule = {
@@ -992,8 +966,8 @@ class RevaDatabase {
       reward_rule: {
         ...(businessData.reward_rule || {}),
         stamps_needed: initialStamps,
-        reward_title: businessData.reward_rule?.reward_title || 'Free Specialty Beverage',
-        reward_desc: businessData.reward_rule?.reward_desc || 'Any handcrafted drink on the house',
+        reward_title: (businessData.reward_rule?.reward_title && businessData.reward_rule.reward_title !== 'Free Specialty Beverage') ? businessData.reward_rule.reward_title : '',
+        reward_desc: (businessData.reward_rule?.reward_desc && businessData.reward_rule.reward_desc !== 'Any handcrafted drink on the house') ? businessData.reward_rule.reward_desc : '',
         min_order_for_stamp: businessData.reward_rule?.min_order_for_stamp || businessData.min_order_for_stamp || 150,
         theme_config: {
           ...(businessData.reward_rule?.theme_config || themeConfig),

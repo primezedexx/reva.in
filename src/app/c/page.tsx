@@ -374,11 +374,12 @@ export function isStoreRewardActive(storeOrPass: any): boolean {
       o &&
       o.id !== 'off_1' &&
       o.title !== 'Welcome Treat' &&
-      o.title !== 'Welcome Milestone Reward'
+      o.title !== 'Welcome Milestone Reward' &&
+      !(o.id === 'off_2' && o.title === 'Free Specialty Beverage')
   );
   if (filteredOffers.length > 0) return true;
   const title = (storeOrPass.rewardTitle || storeOrPass.reward_rule?.reward_title || '').trim();
-  if (title && title.length > 0) {
+  if (title && title.length > 0 && title.toLowerCase() !== 'free specialty beverage') {
     return true;
   }
   return false;
@@ -407,6 +408,30 @@ function CustomerPortalContent() {
     }
   }, [initialTab]);
 
+  // One-time client migration: Purge stale legacy testing data and reset storage cleanly
+  if (typeof window !== 'undefined') {
+    try {
+      if (localStorage.getItem('reva_clean_purge_v12') !== 'true') {
+        localStorage.removeItem('reva_customer_phone');
+        localStorage.removeItem('reva_customer_name');
+        localStorage.removeItem('reva_customer_email');
+        localStorage.removeItem('reva_customer_avatar');
+        localStorage.removeItem('reva_customer_registered_at');
+        localStorage.removeItem('reva_customer_passes');
+        localStorage.removeItem('reva_selected_pass_id');
+        localStorage.removeItem('reva_selected_pass_slug');
+        localStorage.removeItem('reva_cached_businesses');
+        localStorage.removeItem('reva_cached_passes');
+        localStorage.removeItem('reva_claimed_rewards');
+        localStorage.removeItem('reva_unlocked_rewards');
+        if (typeof document !== 'undefined') {
+          document.cookie = 'reva_customer_phone=; path=/; max-age=0';
+        }
+        localStorage.setItem('reva_clean_purge_v12', 'true');
+      }
+    } catch {}
+  }
+
   // Customer Profile State (persisted in localStorage & DB)
   const [customerName, setCustomerName] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -421,6 +446,10 @@ function CustomerPortalContent() {
   const [customerPhone, setCustomerPhone] = useState(() => {
     if (typeof window !== 'undefined') {
       try {
+        if (storeParam) {
+          const storePhone = localStorage.getItem(`reva_phone_${storeParam}`);
+          if (storePhone && storePhone.replace(/\D/g, '').length >= 10) return storePhone;
+        }
         const saved = localStorage.getItem('reva_customer_phone');
         if (saved && saved !== '+91 98765 43210' && saved !== '9876543210') return saved;
         if (typeof document !== 'undefined') {
@@ -619,28 +648,8 @@ function CustomerPortalContent() {
       } as BusinessItem;
     }
 
-    if (storeParam && activeStoreSlug === storeParam) {
-      const isCsb = storeParam.toLowerCase().includes('beam-ng') || storeParam.toLowerCase().includes('chai');
-      const cleanName = isCsb ? 'Chai Sutta Bar' : storeParam
-        .replace(/-[a-z0-9]{4}$/i, '')
-        .replace(/-/g, ' ')
-        .replace(/\b\w/g, (c) => c.toUpperCase());
-      return {
-        id: storeParam,
-        slug: storeParam,
-        name: cleanBizName(cleanName),
-        category: 'Café & Beverage',
-        brand_color: '#0F172A',
-        logo_url: isCsb ? 'https://images.unsplash.com/photo-1576092768241-dec231879fc3?w=300&auto=format&fit=crop&q=80' : undefined,
-        reward_rule: {
-          stamps_needed: 6,
-          reward_title: 'Specialty Loyalty Reward',
-        },
-        active_offers: [],
-      } as unknown as BusinessItem;
-    }
     return null;
-  }, [activeStoreSlug, businesses, userPasses, storeParam]);
+  }, [activeStoreSlug, businesses, userPasses]);
 
   // 3. Synthesize preview pass for owner preview mode (test=1 / preview=1)
   const previewPass = useMemo<CustomerPassItem | null>(() => {
@@ -1735,75 +1744,14 @@ function CustomerPortalContent() {
     fetchBusinesses();
   }, [storeParam]);
 
-  // Auto-prompt join pass if user visited with a specific store parameter and does not have the pass yet
+  // Keep joiningBusiness in sync if user already has the pass
   useEffect(() => {
     if (!storeParam || isPreviewMode || !isSessionLoaded) return;
     const hasPass = userPasses.some((p: any) => p.slug === storeParam || p.businessId === storeParam);
-    if (hasPass) {
-      if (joiningBusiness) setJoiningBusiness(null);
-      return;
+    if (hasPass && joiningBusiness) {
+      setJoiningBusiness(null);
     }
-
-    const targetBiz = businesses.find((b: any) => b.slug === storeParam || b.id === storeParam) || (currentStore?.slug === storeParam ? currentStore : null);
-    if (targetBiz) {
-      const isOutdatedJoin = Boolean(joiningBusiness && (joiningBusiness.name !== targetBiz.name || (!joiningBusiness.logo_url && targetBiz.logo_url)));
-      if (!joiningBusiness || isOutdatedJoin) {
-      const existingPhone = customerPhone || (typeof window !== 'undefined' ? localStorage.getItem('reva_customer_phone') : '');
-      const existingName = customerName || (typeof window !== 'undefined' ? localStorage.getItem('reva_customer_name') : '');
-      if (existingPhone && existingPhone.replace(/\D/g, '').length >= 10) {
-        // Customer already registered on device, silently join in background so they never see a login prompt!
-        fetch('/api/customer/session', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            businessSlug: storeParam,
-            phone: existingPhone,
-            name: existingName && existingName !== 'Valued Guest' ? existingName : undefined,
-          }),
-        })
-          .then((r) => r.json())
-          .then((d) => {
-            if (d.success && d.membership) {
-              const b = d.business || targetBiz;
-              const newPass: CustomerPassItem = {
-                id: d.membership.id,
-                businessId: b.id || b.slug,
-                slug: b.slug,
-                name: cleanBizName(b.name),
-                category: b.category || 'Specialty Cafe',
-                brandColor: b.brand_color || '#0F172A',
-                logo_url: b.logo_url || targetBiz.logo_url,
-                stamps: d.membership.stamps || 0,
-                totalStamps: b.reward_rule?.stamps_needed || targetBiz.reward_rule?.stamps_needed || 6,
-                rewardTitle: b.reward_rule?.reward_title || targetBiz.reward_rule?.reward_title || 'Reward',
-                lastVisit: 'Just now',
-                theme_config: b.theme_config || targetBiz.theme_config,
-                reward_rule: b.reward_rule || targetBiz.reward_rule,
-                active_offers: b.active_offers || targetBiz.active_offers || [],
-              };
-              setUserPasses((prev) => {
-                const updated = [newPass, ...prev.filter((p) => p.slug !== newPass.slug)];
-                try {
-                  localStorage.setItem('reva_customer_passes', JSON.stringify(updated));
-                } catch {}
-                return updated;
-              });
-              setSelectedPassSlug(newPass.slug);
-              setSelectedPassId(getPassKey(newPass));
-              setJoiningBusiness(null);
-              return;
-            }
-            setJoiningBusiness(targetBiz);
-          })
-          .catch(() => {
-            setJoiningBusiness(targetBiz);
-          });
-        } else {
-          setJoiningBusiness(targetBiz);
-        }
-      }
-    }
-  }, [storeParam, businesses, userPasses, currentStore, joiningBusiness, isPreviewMode, customerPhone, customerName, isSessionLoaded]);
+  }, [storeParam, userPasses, joiningBusiness, isPreviewMode, isSessionLoaded]);
 
   // Categories for Explore Tab
   const categories = ['All', 'Café & Beverage', 'Bakery & Deli', 'Fashion & Boutique', 'Salon & Spa', 'Fragrance & Lifestyle'];
@@ -2586,6 +2534,45 @@ function CustomerPortalContent() {
     setRedeemingReward(null);
   };
 
+  // Store-specific / Cafe Logout (Compartmentalized)
+  const handleStoreLogout = (storeSlug?: string) => {
+    sound.playClick();
+    const slug = storeSlug || storeParam || selectedPass?.slug;
+    if (slug) {
+      try {
+        localStorage.removeItem(`reva_phone_${slug}`);
+      } catch {}
+      setUserPasses((prev) => {
+        const filtered = prev.filter((p: any) => p.slug !== slug && p.businessId !== slug);
+        try {
+          localStorage.setItem('reva_customer_passes', JSON.stringify(filtered));
+        } catch {}
+        return filtered;
+      });
+      setSelectedPassId('');
+      setSelectedPassSlug('');
+      try {
+        localStorage.removeItem('reva_selected_pass_id');
+        localStorage.removeItem('reva_selected_pass_slug');
+      } catch {}
+      setCustomerPhone((curr) => {
+        const storePhone = typeof window !== 'undefined' ? localStorage.getItem(`reva_phone_${slug}`) : null;
+        if (!storePhone || curr === storePhone) {
+          try {
+            localStorage.removeItem('reva_customer_phone');
+            document.cookie = 'reva_customer_phone=; path=/; max-age=0';
+          } catch {}
+          return '';
+        }
+        return curr;
+      });
+      setJoinPhoneInput('');
+      setJoinNameInput('');
+      setUploadToast('Logged out of this cafe pass.');
+      setTimeout(() => setUploadToast(null), 3000);
+    }
+  };
+
   // Sign out
   const handleSignOut = async () => {
     sound.playClick();
@@ -2694,8 +2681,28 @@ function CustomerPortalContent() {
                 </span>
               </div>
 
-              {/* TACTILE PASS CARD OR EMPTY STATE */}
-              {selectedPass ? (() => {
+              {/* TACTILE PASS CARD OR SKELETON OR EMPTY STATE */}
+              {storeParam && (!isSessionLoaded || (loadingBusinesses && !currentStore)) ? (
+                <div className="rounded-3xl p-6 bg-slate-200/80 dark:bg-slate-800/60 animate-pulse border border-slate-300/60 dark:border-slate-700 space-y-4 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-2xl bg-slate-300 dark:bg-slate-700" />
+                      <div className="space-y-2">
+                        <div className="w-20 h-3 rounded bg-slate-300 dark:bg-slate-700" />
+                        <div className="w-32 h-5 rounded bg-slate-300 dark:bg-slate-700" />
+                      </div>
+                    </div>
+                    <div className="w-24 h-6 rounded-full bg-slate-300 dark:bg-slate-700" />
+                  </div>
+                  <div className="h-28 rounded-2xl bg-slate-300/50 dark:bg-slate-700/50 flex items-center justify-center">
+                    <div className="flex gap-2">
+                      {Array.from({ length: 6 }).map((_, i) => (
+                        <div key={i} className="w-10 h-10 rounded-xl bg-slate-300 dark:bg-slate-700" />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : selectedPass ? (() => {
                 const rawTheme = selectedPass.theme_config || selectedPass.reward_rule?.theme_config || currentStore?.theme_config || currentStore?.reward_rule?.theme_config;
                 const passTheme = resolveCompleteThemeConfig(rawTheme);
                 const passCardBg = resolvePassBackground(passTheme, selectedPass.brandColor || passTheme.card_bg_color);
@@ -2729,13 +2736,26 @@ function CustomerPortalContent() {
                           <h2 className="text-base sm:text-lg font-display font-bold tracking-tight leading-snug text-white truncate">
                             {selectedPass.name}
                           </h2>
-                          <p className="text-xs text-white/80 font-medium truncate">
-                            {passCustomTagline ? (
-                              <span className="text-amber-200/90 text-[11px] font-medium">{passCustomTagline}</span>
-                            ) : (
-                              <>Member: <span className="font-bold text-white">{customerName}</span></>
-                            )}
-                          </p>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="text-xs text-white/80 font-medium truncate">
+                              {passCustomTagline ? (
+                                <span className="text-amber-200/90 text-[11px] font-medium">{passCustomTagline}</span>
+                              ) : (
+                                <>Member: <span className="font-bold text-white">{customerName || 'Guest'}</span></>
+                              )}
+                            </p>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleStoreLogout(selectedPass.slug);
+                              }}
+                              className="text-[10px] text-amber-200/80 hover:text-white underline cursor-pointer font-medium tracking-tight"
+                              title="Sign out from this cafe"
+                            >
+                              (Log Out / Switch)
+                            </button>
+                          </div>
                         </div>
                       </div>
 
@@ -2943,42 +2963,58 @@ function CustomerPortalContent() {
                   <div className="w-14 h-14 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto shadow-2xs border border-emerald-200/60 dark:border-emerald-800/60">
                     <Wallet className="w-7 h-7" />
                   </div>
-                  <div className="space-y-1.5 max-w-sm mx-auto">
-                    <h3 className="font-display font-bold text-lg text-slate-900 dark:text-white">
-                      {currentStore ? `Join ${currentStore.name}'s Loyalty Pass` : 'Activate Your First Loyalty Card'}
-                    </h3>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                      {currentStore
-                        ? `Get exclusive digital stamps & unlock rewards whenever you visit ${currentStore.name}.`
-                        : "You don't have any active store passes yet. Scan a store QR code or select any partner store below to collect digital stamps and earn free rewards!"}
-                    </p>
-                  </div>
-                  <div className="pt-1">
-                    {currentStore ? (
-                      <button
-                        onClick={() => {
-                          handleOpenJoinModal(currentStore);
-                        }}
-                        className="w-full sm:w-auto px-6 py-3 rounded-full bg-[#0F172A] hover:bg-black dark:bg-white dark:hover:bg-slate-100 text-white dark:text-black font-display font-bold text-xs shadow-md transition-all cursor-pointer inline-flex items-center justify-center gap-2 group active:scale-98"
-                      >
-                        <Sparkles className="w-4 h-4 text-amber-400" />
-                        <span>Join {currentStore.name} Pass</span>
-                        <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
-                      </button>
+                    {currentStore && !isStoreRewardActive(currentStore) ? (
+                      <div className="space-y-1.5 max-w-sm mx-auto">
+                        <div className="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto shadow-2xs border border-amber-200/60">
+                          <Gift className="w-6 h-6" />
+                        </div>
+                        <h3 className="font-display font-bold text-lg text-slate-900 dark:text-white">
+                          No Active Rewards Yet
+                        </h3>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                          {currentStore.name} has not launched any reward campaigns yet. Check back soon or ask at the counter!
+                        </p>
+                      </div>
                     ) : (
-                      <button
-                        onClick={() => {
-                          sound.playClick();
-                          setShowScannerModal(true);
-                        }}
-                        className="w-full sm:w-auto px-6 py-3 rounded-full bg-[#0F172A] hover:bg-black dark:bg-white dark:hover:bg-slate-100 text-white dark:text-black font-display font-bold text-xs shadow-md transition-all cursor-pointer inline-flex items-center justify-center gap-2 group active:scale-98"
-                      >
-                        <QrCode className="w-4 h-4 text-emerald-400 dark:text-emerald-600" />
-                        <span>Scan Store QR to Join</span>
-                        <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
-                      </button>
+                      <>
+                        <div className="space-y-1.5 max-w-sm mx-auto">
+                          <h3 className="font-display font-bold text-lg text-slate-900 dark:text-white">
+                            {currentStore ? `Join ${currentStore.name}'s Loyalty Pass` : 'Activate Your First Loyalty Card'}
+                          </h3>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                            {currentStore
+                              ? `Get exclusive digital stamps & unlock rewards whenever you visit ${currentStore.name}.`
+                              : "You don't have any active store passes yet. Scan a store QR code or select any partner store below to collect digital stamps and earn free rewards!"}
+                          </p>
+                        </div>
+                        <div className="pt-1">
+                          {currentStore ? (
+                            <button
+                              onClick={() => {
+                                handleOpenJoinModal(currentStore);
+                              }}
+                              className="w-full sm:w-auto px-6 py-3 rounded-full bg-[#0F172A] hover:bg-black dark:bg-white dark:hover:bg-slate-100 text-white dark:text-black font-display font-bold text-xs shadow-md transition-all cursor-pointer inline-flex items-center justify-center gap-2 group active:scale-98"
+                            >
+                              <Sparkles className="w-4 h-4 text-amber-400" />
+                              <span>Join {currentStore.name} Pass</span>
+                              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                sound.playClick();
+                                setShowScannerModal(true);
+                              }}
+                              className="w-full sm:w-auto px-6 py-3 rounded-full bg-[#0F172A] hover:bg-black dark:bg-white dark:hover:bg-slate-100 text-white dark:text-black font-display font-bold text-xs shadow-md transition-all cursor-pointer inline-flex items-center justify-center gap-2 group active:scale-98"
+                            >
+                              <QrCode className="w-4 h-4 text-emerald-400 dark:text-emerald-600" />
+                              <span>Scan Store QR to Join</span>
+                              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                            </button>
+                          )}
+                        </div>
+                      </>
                     )}
-                  </div>
                 </div>
               )}
             </div>
@@ -2987,7 +3023,7 @@ function CustomerPortalContent() {
             <div className="space-y-3 pt-2">
               <div className="flex items-center justify-between">
                 <h2 className="font-display font-bold text-sm tracking-tight text-slate-900 dark:text-white">
-                  My Loyalty Passes ({userPasses.length})
+                  {storeParam ? `${currentStore?.name || 'Cafe'} Passes` : `My Loyalty Passes (${userPasses.length})`}
                 </h2>
                 <button
                   onClick={() => {
@@ -3001,29 +3037,39 @@ function CustomerPortalContent() {
                 </button>
               </div>
 
-              {userPasses.length === 0 ? (
-                <div
-                  className={`rounded-2xl p-6 text-center space-y-2 border ${
-                    isDarkMode ? 'bg-slate-900/60 border-slate-800' : 'bg-white border-slate-200/90 shadow-2xs'
-                  }`}
-                >
-                  <CheckCircle2 className="w-7 h-7 text-emerald-500 mx-auto" />
-                  <div className="font-display font-bold text-sm text-slate-900 dark:text-white">
-                    No Active Loyalty Passes
-                  </div>
-                  <p className="text-xs text-slate-500">
-                    Tap <span className="font-semibold text-slate-700 dark:text-slate-300">START</span> below to join a pass and start collecting stamps!
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-2.5">
-                  {userPasses.map((pass, passIdx) => {
-                    const isCompleted = pass.stamps >= pass.totalStamps;
-                    const passKey = getPassKey(pass, passIdx);
-                    const selectedPassKey = selectedPass ? getPassKey(selectedPass) : '';
-                    const isCurrentlySelected = selectedPass
-                      ? passKey === selectedPassKey || (pass.id && selectedPass.id ? pass.id === selectedPass.id : false)
-                      : false;
+              {(() => {
+                const passesToShow = storeParam
+                  ? userPasses.filter((p: any) => p.slug === storeParam || p.businessId === storeParam)
+                  : userPasses;
+
+                if (passesToShow.length === 0) {
+                  if (storeParam) return null;
+                  return (
+                    <div
+                      className={`rounded-2xl p-6 text-center space-y-2 border ${
+                        isDarkMode ? 'bg-slate-900/60 border-slate-800' : 'bg-white border-slate-200/90 shadow-2xs'
+                      }`}
+                    >
+                      <CheckCircle2 className="w-7 h-7 text-emerald-500 mx-auto" />
+                      <div className="font-display font-bold text-sm text-slate-900 dark:text-white">
+                        No Active Loyalty Passes
+                      </div>
+                      <p className="text-xs text-slate-500">
+                        Tap <span className="font-semibold text-slate-700 dark:text-slate-300">START</span> below to join a pass and start collecting stamps!
+                      </p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="space-y-2.5">
+                    {passesToShow.map((pass, passIdx) => {
+                      const isCompleted = pass.stamps >= pass.totalStamps;
+                      const passKey = getPassKey(pass, passIdx);
+                      const selectedPassKey = selectedPass ? getPassKey(selectedPass) : '';
+                      const isCurrentlySelected = selectedPass
+                        ? passKey === selectedPassKey || (pass.id && selectedPass.id ? pass.id === selectedPass.id : false)
+                        : false;
 
                     return (
                       <div
@@ -3102,8 +3148,9 @@ function CustomerPortalContent() {
                     );
                   })}
                 </div>
-              )}
-            </div>
+              );
+            })()}
+          </div>
 
             {/* START A NEW PASS (AVAILABLE REWARDS FOR CURRENT STORE ONLY) */}
             <div className="space-y-3 pt-3">
@@ -4830,7 +4877,7 @@ function CustomerPortalContent() {
                   {joiningBusiness.name}
                 </h3>
                 <div className="text-xs text-emerald-600 dark:text-emerald-400 font-medium truncate pt-0.5">
-                  Win: {joiningBusiness.reward_rule?.reward_title || 'Specialty Loyalty Reward'}
+                  Win: {joiningBusiness.reward_rule?.reward_title || joiningBusiness.active_offers?.[0]?.title || 'Member Rewards'}
                 </div>
               </div>
             </div>

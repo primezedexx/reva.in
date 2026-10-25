@@ -51,8 +51,8 @@ export async function POST(req: NextRequest) {
         is_setup_completed: false,
         reward_rule: {
           stamps_needed: 6,
-          reward_title: 'Free Specialty Beverage',
-          reward_desc: 'Any handcrafted drink or signature treat on the house',
+          reward_title: '',
+          reward_desc: '',
           min_order_for_stamp: 150,
           theme_config: {
             is_setup_completed: false,

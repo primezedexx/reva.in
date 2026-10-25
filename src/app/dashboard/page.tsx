@@ -699,7 +699,8 @@ function OwnerDashboardContent() {
       setCustomBrandColor(existingTheme?.card_bg_color || selectedBusiness.brand_color || '#0F172A');
       setCustomLogoUrl(selectedBusiness.logo_url || '');
       setCustomStampsNeeded(selectedBusiness.reward_rule?.stamps_needed || 6);
-      setCustomRewardTitle(selectedBusiness.reward_rule?.reward_title || 'Free Specialty Beverage');
+      const rawReward = selectedBusiness.reward_rule?.reward_title;
+      setCustomRewardTitle(rawReward && rawReward !== 'Free Specialty Beverage' ? rawReward : '');
       setCustomMinOrder(String(selectedBusiness.reward_rule?.min_order_for_stamp || selectedBusiness.min_order_for_stamp || 150));
       setCustomAvgSpend(String(selectedBusiness.avg_spend_per_visit || 250));
       setCustomWinbackOffer(selectedBusiness.winback_offer_text || '');
@@ -748,7 +749,7 @@ function OwnerDashboardContent() {
         .replace(/(^-|-$)/g, '');
 
       const stamps = Math.min(8, Math.max(1, Number(customStampsNeeded) || 6));
-      const rewardTitle = customRewardTitle.trim() || 'Free Specialty Beverage';
+      const rewardTitle = customRewardTitle.trim();
       const minOrder = Number(customMinOrder) || 150;
 
       const compiledTheme: ThemeConfig = {
@@ -1567,7 +1568,7 @@ function OwnerDashboardContent() {
       setIsSavingSettings(true);
       sound.playClick();
       const stamps = Math.min(8, Math.max(1, Number(settingsStamps) || 6));
-      const rewardTitle = settingsRewardTitle.trim() || 'Free Specialty Beverage';
+      const rewardTitle = settingsRewardTitle.trim();
       const minOrder = Number(settingsMinOrder) || 150;
 
       // Keep active_offers synchronized with the updated grand reward title and stamps
@@ -6028,7 +6029,7 @@ function OwnerDashboardContent() {
                           <div className="pt-2 border-t border-white/20 flex items-center justify-between text-[11px] text-white/90">
                             <span className="truncate font-semibold flex items-center gap-1">
                               <span>🎁</span>
-                              <span className="truncate">{customRewardTitle || 'Free Specialty Beverage'}</span>
+                              <span className="truncate">{customRewardTitle || 'Grand Reward'}</span>
                             </span>
                             <span className="text-[10px] font-mono text-white/70 shrink-0 ml-2">
                               ₹{customMinOrder || 150}+
@@ -6446,7 +6447,7 @@ function OwnerDashboardContent() {
                                   type="text"
                                   value={customRewardTitle}
                                   onChange={(e) => setCustomRewardTitle(e.target.value)}
-                                  placeholder="e.g. Free Specialty Beverage or Cat Treat Combo"
+                                  placeholder="e.g. Free Coffee, 20% Off, or Specialty Treat"
                                   className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#0F172A]"
                                   required
                                 />
@@ -6590,7 +6591,7 @@ function OwnerDashboardContent() {
                                       🎁 Reward at {customStampsNeeded} Stamps
                                     </div>
                                     <div className="text-[11px] font-bold text-white truncate">
-                                      {customRewardTitle || 'Free Specialty Beverage'}
+                                      {customRewardTitle || 'Grand Reward'}
                                     </div>
                                   </div>
                                 </div>
