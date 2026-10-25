@@ -364,25 +364,7 @@ function getPassKey(pass: any, index: number = 0): string {
 
 export function isStoreRewardActive(storeOrPass: any): boolean {
   if (!storeOrPass) return false;
-  const offers = (Array.isArray(storeOrPass.active_offers) && storeOrPass.active_offers.length > 0)
-    ? storeOrPass.active_offers
-    : (Array.isArray(storeOrPass.reward_rule?.active_offers) && storeOrPass.reward_rule.active_offers.length > 0)
-      ? storeOrPass.reward_rule.active_offers
-      : [];
-  const filteredOffers = offers.filter(
-    (o: any) =>
-      o &&
-      o.id !== 'off_1' &&
-      o.title !== 'Welcome Treat' &&
-      o.title !== 'Welcome Milestone Reward' &&
-      !(o.id === 'off_2' && o.title === 'Free Specialty Beverage')
-  );
-  if (filteredOffers.length > 0) return true;
-  const title = (storeOrPass.rewardTitle || storeOrPass.reward_rule?.reward_title || '').trim();
-  if (title && title.length > 0 && title.toLowerCase() !== 'free specialty beverage') {
-    return true;
-  }
-  return false;
+  return true;
 }
 
 function CustomerPortalContent() {
@@ -437,10 +419,10 @@ function CustomerPortalContent() {
     if (typeof window !== 'undefined') {
       try {
         const saved = localStorage.getItem('reva_customer_name');
-        if (saved && saved !== 'Aarav Sharma') return saved;
+        if (saved && saved !== 'Aarav Sharma' && saved !== 'Valued Guest') return saved;
       } catch {}
     }
-    return 'Valued Guest';
+    return '';
   });
 
   const [customerPhone, setCustomerPhone] = useState(() => {
@@ -1690,6 +1672,9 @@ function CustomerPortalContent() {
   ]);
 
   // Fetch Businesses from API
+  const hasAutoPromptedJoinRef = useRef(false);
+
+  // Fetch Businesses from API & Auto-Prompt Scanned QR Business Pass Registration
   useEffect(() => {
     async function fetchBusinesses() {
       try {
@@ -1708,13 +1693,27 @@ function CustomerPortalContent() {
                   } catch {}
                   return updated;
                 });
-                // Ensure joiningBusiness immediately reflects live store name and logo
-                setJoiningBusiness((curr) => {
-                  if (curr && (curr.slug === d.business.slug || curr.id === d.business.id || curr.slug === storeParam || curr.id === storeParam)) {
-                    return d.business;
-                  }
-                  return curr;
-                });
+
+                // Auto-open Join/Login popup if customer does not have an active pass for this store
+                const hasPass = (userPasses || []).some(
+                  (p: any) => p.slug === d.business.slug || p.businessId === d.business.id || p.slug === storeParam || p.businessId === storeParam
+                );
+                const hasRealPhone = Boolean(customerPhone && customerPhone.replace(/\D/g, '').length >= 10);
+                if ((!hasPass || !hasRealPhone) && !isPreviewMode && !hasAutoPromptedJoinRef.current) {
+                  hasAutoPromptedJoinRef.current = true;
+                  setJoiningBusiness(d.business);
+                  setJoinNameInput(customerName && customerName !== 'Valued Guest' ? customerName : '');
+                  setJoinPhoneInput(hasRealPhone ? customerPhone : '');
+                  setJoinError(null);
+                } else {
+                  // Ensure joiningBusiness immediately reflects live store name and logo
+                  setJoiningBusiness((curr) => {
+                    if (curr && (curr.slug === d.business.slug || curr.id === d.business.id || curr.slug === storeParam || curr.id === storeParam)) {
+                      return d.business;
+                    }
+                    return curr;
+                  });
+                }
               }
             })
             .catch(() => {});
@@ -1744,14 +1743,30 @@ function CustomerPortalContent() {
     fetchBusinesses();
   }, [storeParam]);
 
-  // Keep joiningBusiness in sync if user already has the pass
+  // Keep joiningBusiness in sync or auto-open if store is already in cached businesses
   useEffect(() => {
     if (!storeParam || isPreviewMode || !isSessionLoaded) return;
-    const hasPass = userPasses.some((p: any) => p.slug === storeParam || p.businessId === storeParam);
-    if (hasPass && joiningBusiness) {
-      setJoiningBusiness(null);
+    const existingPass = userPasses.find((p: any) => p.slug === storeParam || p.businessId === storeParam);
+    const hasRealPhone = Boolean(customerPhone && customerPhone.replace(/\D/g, '').length >= 10);
+
+    if (existingPass && hasRealPhone) {
+      if (joiningBusiness) {
+        setJoiningBusiness(null);
+      }
+      return;
     }
-  }, [storeParam, userPasses, joiningBusiness, isPreviewMode, isSessionLoaded]);
+
+    if (hasAutoPromptedJoinRef.current) return;
+
+    const matchedBiz = businesses.find((b: any) => b.slug === storeParam || b.id === storeParam);
+    if (matchedBiz) {
+      hasAutoPromptedJoinRef.current = true;
+      setJoiningBusiness(matchedBiz);
+      setJoinNameInput(customerName && customerName !== 'Valued Guest' ? customerName : '');
+      setJoinPhoneInput(hasRealPhone ? customerPhone : '');
+      setJoinError(null);
+    }
+  }, [storeParam, userPasses, joiningBusiness, isPreviewMode, isSessionLoaded, businesses, customerPhone, customerName]);
 
   // Categories for Explore Tab
   const categories = ['All', 'Café & Beverage', 'Bakery & Deli', 'Fashion & Boutique', 'Salon & Spa', 'Fragrance & Lifestyle'];
@@ -2365,14 +2380,15 @@ function CustomerPortalContent() {
   const handleOpenJoinModal = (b: BusinessItem) => {
     sound.playClick();
     const existing = userPasses.find((p) => p.slug === b.slug);
-    if (existing) {
+    if (existing && customerPhone && customerPhone.replace(/\D/g, '').length >= 10) {
       handleSelectPass(b.slug);
       switchTab('home');
       return;
     }
     setJoiningBusiness(b);
-    setJoinNameInput(customerName || '');
-    setJoinPhoneInput(customerPhone || '');
+    setJoinNameInput(customerName && customerName !== 'Valued Guest' ? customerName : '');
+    const validPhone = customerPhone && customerPhone !== '+91 98765 43210' && customerPhone !== '9876543210' && !customerPhone.includes('@') && customerPhone.replace(/\D/g, '').length >= 10 ? customerPhone : '';
+    setJoinPhoneInput(validPhone);
     setJoinError(null);
   };
 
@@ -2383,12 +2399,12 @@ function CustomerPortalContent() {
     const phone = joinPhoneInput.trim();
     const name = joinNameInput.trim();
 
-    if (!phone || phone.length < 8) {
-      setJoinError('Please enter a valid mobile number');
+    if (!phone || phone.replace(/\D/g, '').length < 10) {
+      setJoinError('Please enter a valid 10-digit mobile number');
       return;
     }
-    if (!name) {
-      setJoinError('Please enter your name');
+    if (!name || name === 'Valued Guest') {
+      setJoinError('Please enter your full name');
       return;
     }
 
@@ -2471,7 +2487,7 @@ function CustomerPortalContent() {
         logo_url: targetBiz.logo_url || joiningBusiness.logo_url || (targetBiz.theme_config as any)?.logo_url || '',
         stamps: mem?.stamps || 0,
         totalStamps: stampsNeeded,
-        rewardTitle: targetBiz.reward_rule?.reward_title || 'Specialty Loyalty Reward',
+        rewardTitle: targetBiz.reward_rule?.reward_title || targetBiz.active_offers?.[0]?.title || 'Specialty Loyalty Reward',
         lastVisit: 'Just joined',
         minOrder: targetBiz.reward_rule?.min_order_for_stamp || targetBiz.min_order_for_stamp || undefined,
         expiry_days: targetBiz.reward_rule?.expiry_days !== undefined ? Number(targetBiz.reward_rule.expiry_days) : 60,
@@ -2502,6 +2518,11 @@ function CustomerPortalContent() {
       });
 
       setSelectedPassSlug(newPass.slug);
+      setSelectedPassId(newPass.id);
+      try {
+        localStorage.setItem('reva_selected_pass_slug', newPass.slug);
+        localStorage.setItem('reva_selected_pass_id', newPass.id);
+      } catch {}
       setJoiningBusiness(null);
       switchTab('home');
 

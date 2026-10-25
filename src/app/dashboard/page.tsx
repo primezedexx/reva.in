@@ -2283,9 +2283,10 @@ function OwnerDashboardContent() {
     );
   }
 
-  const customerQrUrl = selectedBusiness ? `${getPublicOrigin()}/c/${selectedBusiness.slug}` : '';
-  const testPassUrl = selectedBusiness ? `/c/${selectedBusiness.slug}?test=1` : '';
-  const fullTestPassUrl = selectedBusiness ? `${getPublicOrigin()}/c/${selectedBusiness.slug}?test=1` : '';
+  const businessSlugOrId = selectedBusiness?.slug || selectedBusiness?.id || 'store';
+  const customerQrUrl = selectedBusiness ? `${getPublicOrigin()}/c/${businessSlugOrId}` : '';
+  const testPassUrl = selectedBusiness ? `/c/${businessSlugOrId}?test=1` : '';
+  const fullTestPassUrl = selectedBusiness ? `${getPublicOrigin()}/c/${businessSlugOrId}?test=1` : '';
 
   const subInfo = getSubscriptionRemainingInfo(selectedBusiness);
   const isTrial = selectedBusiness?.trial_active ?? (selectedBusiness?.subscription_status === 'trialing');

@@ -76,50 +76,42 @@ export async function GET(req: NextRequest) {
       const stampsNeeded = biz?.reward_rule?.stamps_needed || 6;
       const themeConfig = resolveCompleteThemeConfig(biz?.reward_rule?.theme_config || biz?.theme_config);
 
-      const hasCustomReward = Boolean(
-        biz?.reward_rule?.reward_title &&
-        biz.reward_rule.reward_title.trim() &&
-        biz.reward_rule.reward_title.trim() !== 'Free Specialty Beverage'
-      );
-      const hasOffers = (biz?.active_offers || []).length > 0;
-
-      // 1. Primary pass for this store (only if store has active rewards configured)
-      if (hasCustomReward || hasOffers) {
-        passes.push({
-          id: `${biz?.slug || 'store'}_primary`,
-          rewardId: 'primary',
-          slug: biz?.slug || 'store',
-          businessId: biz?.id,
-          name: biz?.name || 'Local Cafe',
-          category: biz?.category || biz?.reward_rule?.category || 'Café & Beverage',
-          brandColor: themeConfig.card_bg_color || biz?.brand_color || '#451A03',
-          logo_url: biz?.logo_url || '',
-          stamps: m.stamps || 0,
-          totalStamps: stampsNeeded,
-          rewardTitle: biz?.reward_rule?.reward_title || (biz?.active_offers?.[0]?.title || ''),
-          lastVisit: m.last_visit_at ? 'Recently' : 'Just joined',
-          minOrder: biz?.reward_rule?.min_order_for_stamp || biz?.min_order_for_stamp || undefined,
-          expiry_days: biz?.reward_rule?.expiry_days !== undefined ? Number(biz.reward_rule.expiry_days) : 60,
-          passId: `REV-${m.id.slice(0, 8).toUpperCase()}`,
-          membershipId: m.id,
-          membership_id: m.id,
-          googleReviewUrl: biz?.google_review_url || biz?.reward_rule?.google_review_url,
-          phone: biz?.phone || biz?.reward_rule?.phone,
-          instagram_url: biz?.instagram_url || biz?.reward_rule?.instagram_url,
-          maps_url: biz?.maps_url || biz?.reward_rule?.maps_url,
-          description: biz?.theme_config?.description || biz?.reward_rule?.description || biz?.reward_rule?.reward_desc,
-          address: biz?.address || biz?.reward_rule?.address,
-          area: biz?.area || biz?.reward_rule?.area,
-          city: biz?.city || biz?.reward_rule?.city,
-          joined_at: m.created_at || primaryCustomer?.registered_at || primaryCustomer?.created_at || new Date().toISOString(),
-          last_visit_at: m.last_visit_at,
-          last_qr_stamp_at: m.last_qr_stamp_at,
-          cycle: m.total_visits || 1,
-          theme_config: themeConfig,
-          reward_rule: biz?.reward_rule,
-          active_offers: biz?.active_offers || [],
-        });
-      }
+      // 1. Primary pass for this store (always return membership pass)
+      const primaryRewardTitle = biz?.reward_rule?.reward_title?.trim() || (biz?.active_offers?.[0]?.title) || 'Specialty Loyalty Reward';
+      passes.push({
+        id: `${biz?.slug || 'store'}_primary`,
+        rewardId: 'primary',
+        slug: biz?.slug || 'store',
+        businessId: biz?.id,
+        name: biz?.name || 'Local Cafe',
+        category: biz?.category || biz?.reward_rule?.category || 'Café & Beverage',
+        brandColor: themeConfig.card_bg_color || biz?.brand_color || '#451A03',
+        logo_url: biz?.logo_url || '',
+        stamps: m.stamps || 0,
+        totalStamps: stampsNeeded,
+        rewardTitle: primaryRewardTitle,
+        lastVisit: m.last_visit_at ? 'Recently' : 'Just joined',
+        minOrder: biz?.reward_rule?.min_order_for_stamp || biz?.min_order_for_stamp || undefined,
+        expiry_days: biz?.reward_rule?.expiry_days !== undefined ? Number(biz.reward_rule.expiry_days) : 60,
+        passId: `REV-${m.id.slice(0, 8).toUpperCase()}`,
+        membershipId: m.id,
+        membership_id: m.id,
+        googleReviewUrl: biz?.google_review_url || biz?.reward_rule?.google_review_url,
+        phone: biz?.phone || biz?.reward_rule?.phone,
+        instagram_url: biz?.instagram_url || biz?.reward_rule?.instagram_url,
+        maps_url: biz?.maps_url || biz?.reward_rule?.maps_url,
+        description: biz?.theme_config?.description || biz?.reward_rule?.description || biz?.reward_rule?.reward_desc,
+        address: biz?.address || biz?.reward_rule?.address,
+        area: biz?.area || biz?.reward_rule?.area,
+        city: biz?.city || biz?.reward_rule?.city,
+        joined_at: m.created_at || primaryCustomer?.registered_at || primaryCustomer?.created_at || new Date().toISOString(),
+        last_visit_at: m.last_visit_at,
+        last_qr_stamp_at: m.last_qr_stamp_at,
+        cycle: m.total_visits || 1,
+        theme_config: themeConfig,
+        reward_rule: biz?.reward_rule,
+        active_offers: biz?.active_offers || [],
+      });
 
       // 2. Any additional active reward passes started by the customer on this store
       let tierData: any = {};
